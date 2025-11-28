@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barcode Attendance Scanner</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; color: #333; }
+        .container { max-width: 800px; margin: auto; background: white; border-radius: 15px; padding: 30px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); }
+        h1, h3 { color: #333; }
+        .scanner-container { position: relative; background: #000; border-radius: 10px; overflow: hidden; margin: 20px 0; }
+        #video { width: 100%; display: block; }
+        .scanner-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 80%; height: 150px; border: 3px solid #4CAF50; box-shadow: 0 0 20px rgba(76, 175, 80, 0.5); }
+        .control-panel { text-align: center; margin: 20px 0; }
+        .status { padding: 15px; border-radius: 8px; margin-top: 15px; text-align: center; font-weight: 600; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        .attendance-list ul { list-style-type: none; padding: 0; }
+        .attendance-list li { background: #f8f9fa; padding: 10px 15px; margin-bottom: 5px; border-radius: 5px; display: flex; justify-content: space-between; animation: slideIn 0.3s ease; }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-15px); } to { opacity: 1; transform: translateX(0); } }
+        .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+        .btn-primary { background-color: #007bff; color: white; }
+        .btn-secondary { background-color: #6c757d; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 style="text-align: center;">📱 Barcode Attendance Scanner</h1>
+        <div class="control-panel">
+            <button id="start-btn" class="btn btn-primary">Start Scanner</button>
+            <button id="stop-btn" class="btn btn-secondary" style="display: none;">Stop Scanner</button>
+        </div>
+        <div class="scanner-container">
+            <video id="video" autoplay muted playsinline></video>
+            <div class="scanner-overlay"></div>
+        </div>
+        <div id="status" class="status info">Ready to scan.</div>
+        <div class="attendance-list">
+            <h3>📋 Today's Scanned Attendance</h3>
+            <ul id="attendance-items"></ul>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const videoEl = document.getElementById('video');
+            const startBtn = document.getElementById('start-btn');
+            const stopBtn = document.getElementById('stop-btn');
+            const statusEl = document.getElementById('status');
+            const attendanceItemsEl = document.getElementById('attendance-items');
+            
+            const codeReader = new ZXing.BrowserMultiFormatReader();
+            let isScanning = false;
+            let isProcessing = false;
+            const scannedToday = new Set();
+
+            async function loadInitialAttendance() {
+                try {
+                    const response = await fetch('/get_today_attendance_list');
+                    const records = await response.json();
+                    records.forEach(record => {
+                        scannedToday.add(record.id);
+                        addRecordToList(record.name, record.id, record.timestamp);
+                    });
+                } catch (error) {
+                    console.error("Could not load initial attendance:", error);
+                }
+            }
+
+            function updateStatus(message, type = 'info') {
+                statusEl.textContent = message;
+                statusEl.className = `status ${type}`;
+            }
+
+            function addRecordToList(name, id, timestamp) {
+                const li = document.createElement('li');
+                li.innerHTML = `<span><strong>${name}</strong> (ID: ${id})</span> <span>${timestamp}</span>`;
+                attendanceItemsEl.prepend(li);
+            }
+
+            async function handleBarcode(barcodeText) {
+                if (isProcessing || scannedToday.has(barcodeText)) {
+                    if (scannedToday.has(barcodeText)) {
+                        updateStatus('Student already marked present today.', 'info');
+                    }
+                    return;
+                }
+                isProcessing = true;
+                updateStatus(`Processing ID: ${barcodeText}...`, 'info');
+
+                try {
+                    const response = await fetch('/mark_barcode_attendance', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ student_id: barcodeText })
+                    });
+                    const data = await response.json();
+                    if (data.message && data.message.includes('already marked')) {
+                        updateStatus(`Attendance already marked for ${data.student.name}.`, 'info');
+                    } else if (data.success) {
+                        updateStatus(`Success: Welcome, ${data.student.name}!`, 'success');
+                        scannedToday.add(data.student.id);
+                        addRecordToList(data.student.name, data.student.id, data.timestamp);
+                    } else {
+                        updateStatus(`Error: ${data.message || 'Unknown error'}`, 'error');
+                    }
+                } catch (error) {
+                    updateStatus(`Error: ${error.message}`, 'error');
+                } finally {
+                    setTimeout(() => { 
+                        isProcessing = false;
+                        updateStatus('Ready for next scan.', 'info');
+                    }, 2500);
+                }
+            }
+
+            startBtn.addEventListener('click', () => {
+                isScanning = true;
+                startBtn.style.display = 'none';
+                stopBtn.style.display = 'inline-block';
+                updateStatus('Scanner active. Please position barcode.', 'info');
+                codeReader.decodeFromVideoDevice(undefined, 'video', (result, err) => {
+                    if (result) {
+                        handleBarcode(result.text);
+                    }
+                });
+            });
+
+            stopBtn.addEventListener('click', () => {
+                isScanning = false;
+                codeReader.reset();
+                startBtn.style.display = 'inline-block';
+                stopBtn.style.display = 'none';
+                updateStatus('Scanner stopped.', 'info');
+            });
+
+            loadInitialAttendance();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,240 @@
+{% extends "_base.html" %}
+{% block title %}Live Attendance System{% endblock %}
+
+{% block styles %}
+<style>
+    .attendance-wrapper { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+    .video-container { position: relative; flex: 1 1 640px; background: #000; border-radius: 15px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
+    .recognized-container { flex: 1 1 300px; }
+    #video-overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
+    #video { width: 100%; height: auto; display: block; }
+    .recognized-container ul { list-style-type: none; padding: 0; max-height: 480px; overflow-y: auto; }
+    .recognized-container li { background-color: #f0f9ff; margin-bottom: 8px; padding: 12px 15px; border-radius: 8px; color: #0c5460; border-left: 5px solid #17a2b8; font-weight: 500; opacity: 0; animation: slideIn 0.5s forwards; display: flex; justify-content: space-between; align-items: center; }
+    .time-stamp { color: #666; font-size: 0.9em; }
+    @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+    .status-indicator { display: inline-block; width: 12px; height: 12px; background-color: #4caf50; border-radius: 50%; margin-right: 8px; animation: pulse 2s infinite; }
+    @keyframes pulse { 50% { opacity: 0.5; } }
+    .control-panel { text-align: center; margin-bottom: 20px; }
+    .video-info { position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.6); color: white; padding: 5px 10px; border-radius: 5px; font-size: 0.9em; z-index: 5; }
+</style>
+{% endblock %}
+
+{% block content %}
+    <h1>Live Attendance System</h1>
+    <p class="hint">The system uses the webcam to detect and identify students. Attendance is marked automatically.</p>
+    
+    <div class="card">
+        <div class="control-panel">
+            <button id="start-btn" class="button primary"><i class="fas fa-play-circle"></i> Start Attendance</button>
+            <button id="stop-btn" class="button danger" style="display: none;"><i class="fas fa-stop-circle"></i> Stop Attendance</button>
+            <div id="system-status" class="mt-2">
+                <span id="status-text">Click Start to begin face recognition</span>
+            </div>
+        </div>
+        
+        <div class="attendance-wrapper">
+            <div class="video-container">
+                <video id="video" width="640" height="480" autoplay muted playsinline></video>
+                <canvas id="video-overlay"></canvas>
+                <div class="video-info">FPS: <span id="video-fps">0</span> | Status: <span id="detection-status">Inactive</span></div>
+            </div>
+            
+            <div class="recognized-container">
+                <h2>Present Today (<span id="present-count">0</span>/<span id="total-students">0</span>)</h2>
+                <ul id="recognized-list">
+                    <p class="hint" id="no-attendance-msg">No students marked present yet.</p>
+                </ul>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // #region ### FIXED: JINJA URLS DEFINITION ###
+    // Define the URLs as JavaScript variables so Jinja processes them immediately on load
+    const STATS_URL = "{{ url_for('get_live_attendance_stats') }}";
+    const RECOGNIZE_URL = "{{ url_for('recognize') }}";
+    // #endregion
+
+    // #region Element Variables
+    const video = document.getElementById('video');
+    const overlay = document.getElementById('video-overlay');
+    const overlayCtx = overlay.getContext('2d');
+    const recognizedList = document.getElementById('recognized-list');
+    const startBtn = document.getElementById('start-btn');
+    const stopBtn = document.getElementById('stop-btn');
+    const statusText = document.getElementById('status-text');
+    const detectionStatus = document.getElementById('detection-status');
+    const noAttendanceMsg = document.getElementById('no-attendance-msg');
+    const presentCountEl = document.getElementById('present-count');
+    const totalStudentsEl = document.getElementById('total-students');
+    // #endregion
+
+    let isRecognitionActive = false;
+    let recognitionInterval, statsInterval;
+    let fpsCounter = 0, lastFpsTime = Date.now();
+    const recognizedToday = new Set();
+
+    const setupCanvas = () => {
+        overlay.width = video.clientWidth;
+        overlay.height = video.clientHeight;
+    };
+    
+    // Attempt to get the webcam stream immediately
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => { 
+            video.srcObject = stream;
+            // Set up canvas dimensions once metadata is loaded
+            video.addEventListener('loadedmetadata', setupCanvas);
+            // Add a resize listener for responsiveness
+            window.addEventListener('resize', setupCanvas);
+        })
+        .catch(err => window.showNotification('Could not access webcam. Please check permissions.', 'error'));
+
+    function updateStats() {
+        // FIXED: Using the STATS_URL variable instead of inline Jinja
+        fetch(STATS_URL)
+            .then(response => response.json())
+            .then(data => {
+                totalStudentsEl.textContent = data.total_students;
+                presentCountEl.textContent = data.present_count;
+
+                recognizedList.innerHTML = ''; // Clear the list to rebuild it
+                if (data.present_list.length > 0) {
+                    noAttendanceMsg.style.display = 'none';
+                    // Sort by newest first
+                    data.present_list.sort((a, b) => b.timestamp.localeCompare(a.timestamp)); 
+                    data.present_list.forEach(student => {
+                        recognizedToday.add(student.id);
+                        const li = document.createElement('li');
+                        li.innerHTML = `<span><strong>${student.name}</strong> (ID: ${student.id})</span><span class="time-stamp">${student.timestamp}</span>`;
+                        recognizedList.appendChild(li);
+                    });
+                } else {
+                    recognizedList.appendChild(noAttendanceMsg);
+                    noAttendanceMsg.style.display = 'block';
+                }
+            })
+            .catch(error => console.error("Error fetching live stats:", error));
+    }
+
+    function performRecognition() {
+        if (!isRecognitionActive || video.paused || video.ended || video.videoWidth === 0) return;
+
+        // FPS calculation
+        const now = Date.now();
+        if (now - lastFpsTime >= 1000) {
+            document.getElementById('video-fps').textContent = fpsCounter;
+            fpsCounter = 0;
+            lastFpsTime = now;
+        }
+        fpsCounter++;
+        
+        // Capture video frame
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = canvas.toDataURL('image/jpeg', 0.8);
+
+        detectionStatus.textContent = 'Processing...';
+
+        // FIXED: Using the RECOGNIZE_URL variable instead of inline Jinja
+        fetch(RECOGNIZE_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: imageData })
+        })
+        .then(response => {
+             if (!response.ok) {
+                // If Flask returns an error (like 500 if the model isn't found)
+                return response.json().then(err => { throw new Error(err.error || 'Server error during recognition.'); });
+            }
+            return response.json();
+        })
+        .then(data => {
+            overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+            if (!data.recognized_faces) return;
+
+            detectionStatus.textContent = `${data.recognized_faces.length} face(s) detected`;
+            
+            data.recognized_faces.forEach(face => {
+                const scaleX = overlay.width / canvas.width;
+                const scaleY = overlay.height / canvas.height;
+                const [x, y, w, h] = face.box;
+                const scaledBox = [x * scaleX, y * scaleY, w * scaleX, h * scaleY];
+
+                const studentId = face.name !== "Unknown" ? face.student_id : "Unknown"; 
+                
+                // If attendance is already marked, show a warning notification
+                if (face.status === 'already_present') {
+                    window.showNotification(`Attendance already marked for ${face.name}`, 'warning');
+                } else if (face.name !== 'Unknown' && face.attendance > 0 && !recognizedToday.has(studentId)) {
+                    recognizedToday.add(studentId);
+                    window.showNotification(`${face.name} marked present!`, 'success');
+                    // Fetch fresh stats after a successful recognition
+                    setTimeout(updateStats, 500);
+                }
+                
+                // Drawing logic
+                overlayCtx.strokeStyle = face.name !== 'Unknown' ? '#4CAF50' : '#f44336';
+                overlayCtx.lineWidth = 3;
+                overlayCtx.strokeRect(...scaledBox);
+                overlayCtx.fillStyle = overlayCtx.strokeStyle;
+                overlayCtx.font = 'bold 16px Arial';
+                overlayCtx.fillText(face.name, scaledBox[0], scaledBox[1] > 10 ? scaledBox[1] - 5 : scaledBox[1] + scaledBox[3] + 15);
+            });
+        })
+        .catch(error => {
+            detectionStatus.textContent = 'Error';
+            // Show the error to the user via notification
+            window.showNotification(`Recognition Failed: ${error.message || 'Check model status.'}`, 'error');
+            console.error('Recognition error:', error);
+            // Stop recognition on critical errors (like model missing)
+            if (error.message.includes('Model')) {
+                 stopBtn.click(); 
+                 window.showNotification('System stopped due to missing recognition model.', 'error');
+            }
+        });
+    }
+
+    startBtn.addEventListener('click', () => {
+        // Prevent starting if video stream is not ready
+        if (video.videoWidth === 0) {
+            window.showNotification('Webcam stream not ready. Check permissions or wait a moment.', 'warning');
+            return;
+        }
+
+        isRecognitionActive = true;
+        startBtn.style.display = 'none';
+        stopBtn.style.display = 'inline-block';
+        statusText.innerHTML = '<span class="status-indicator"></span>Recognition Active';
+        
+        // Clear any previous intervals just in case
+        clearInterval(recognitionInterval);
+        clearInterval(statsInterval);
+        
+        recognitionInterval = setInterval(performRecognition, 1000); // 1 recognition per second
+        statsInterval = setInterval(updateStats, 5000); // Refresh list every 5 seconds
+        updateStats(); // Initial call
+    });
+
+    stopBtn.addEventListener('click', () => {
+        isRecognitionActive = false;
+        stopBtn.style.display = 'none';
+        startBtn.style.display = 'inline-block';
+        statusText.textContent = 'Click Start to begin';
+        detectionStatus.textContent = 'Inactive';
+        
+        clearInterval(recognitionInterval);
+        clearInterval(statsInterval);
+        overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+    });
+
+    // Initial load of stats
+    updateStats();
+});
+</script>
+{% endblock %}

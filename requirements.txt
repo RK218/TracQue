@@ -1,0 +1,8 @@
+pandas
+numpy
+Flask
+scikit-learn
+matplotlib
+seaborn
+opencv-contrib-python
+serial

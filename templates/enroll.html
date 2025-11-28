@@ -1,0 +1,314 @@
+{% extends "_base.html" %}
+{% block title %}Enroll New Student{% endblock %}
+
+{% block styles %}
+<style>
+    #capture-status { margin-top: 15px; }
+    #progress-bar { width: 100%; background-color: #e0e0e0; border-radius: 5px; overflow: hidden; margin-top: 10px; }
+    #progress { width: 0%; height: 20px; background-color: #4CAF50; text-align: center; line-height: 20px; color: white; transition: width 0.1s ease-in-out; }
+    
+    .fingerprint-section {
+        margin-top: 20px;
+        padding: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 10px;
+        color: white;
+    }
+    
+    .fingerprint-status {
+        background: rgba(255,255,255,0.2);
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 15px;
+    }
+    
+    .fingerprint-prompt {
+        font-size: 1.2em;
+        font-weight: bold;
+        text-align: center;
+        margin: 15px 0;
+        padding: 10px;
+        background: rgba(255,255,255,0.3);
+        border-radius: 5px;
+    }
+    
+    #fingerprint-icon {
+        font-size: 4em;
+        text-align: center;
+        margin: 20px 0;
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.1); opacity: 0.8; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    <h1>Enroll New Student</h1>
+    <div class="card">
+        <h2>Step 1: Enter Student Details</h2>
+        <form id="enroll-form">
+            <input type="text" id="student_id" placeholder="Enter Student ID (e.g., S101, ALPHA-01)" required class="form-control mb-2">
+            <input type="text" id="name" placeholder="Enter Student Name (e.g., Jane Doe)" required class="form-control mb-2">
+            <input type="text" id="parent_phone" placeholder="Enter Parent Phone Number" required class="form-control mb-2">
+        </form>
+    </div>
+    
+    <div class="card">
+        <h2>Step 2: Capture 30 Face Images</h2>
+        <video id="video" width="640" height="480" autoplay muted playsinline style="border-radius: 10px; max-width: 100%; height: auto;"></video>
+        <button id="capture" class="button">Start Face Capture</button>
+        <div id="capture-status">
+            <p>Images Captured: <span id="count">0</span>/30</p>
+            <div id="progress-bar"><div id="progress">0%</div></div>
+        </div>
+    </div>
+    
+    <div class="card fingerprint-section" id="fingerprint-section" style="display:none;">
+        <h2><i class="fas fa-fingerprint"></i> Step 3: Enroll Fingerprint (Optional)</h2>
+        <p>Enroll fingerprint for quick attendance marking</p>
+        
+        <div id="fingerprint-icon">
+            <i class="fas fa-fingerprint"></i>
+        </div>
+        
+        <div class="fingerprint-prompt" id="fingerprint-prompt">
+            Ready to enroll fingerprint
+        </div>
+        
+        <div class="fingerprint-status" id="fingerprint-status">
+            <strong>Status:</strong> <span id="fp-status-text">Not started</span>
+        </div>
+        
+        <div style="text-align: center; margin-top: 20px;">
+            <button id="enroll-fingerprint-btn" class="button success" style="margin-right: 10px;">
+                <i class="fas fa-fingerprint"></i> Enroll Fingerprint
+            </button>
+            <button id="skip-fingerprint-btn" class="button secondary">
+                <i class="fas fa-forward"></i> Skip Fingerprint
+            </button>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const video = document.getElementById('video');
+    const captureButton = document.getElementById('capture');
+    const countSpan = document.getElementById('count');
+    const progressDiv = document.getElementById('progress');
+    const fingerprintSection = document.getElementById('fingerprint-section');
+    const enrollFingerprintBtn = document.getElementById('enroll-fingerprint-btn');
+    const skipFingerprintBtn = document.getElementById('skip-fingerprint-btn');
+    const fingerprintPrompt = document.getElementById('fingerprint-prompt');
+    const fpStatusText = document.getElementById('fp-status-text');
+    
+    let capturedImages = [];
+    let currentStudentId = '';
+    let currentStudentName = '';
+
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => { video.srcObject = stream; })
+        .catch(err => { window.showNotification('Could not access webcam. Please check permissions.', 'error'); });
+
+    captureButton.addEventListener('click', () => {
+        const studentId = document.getElementById('student_id').value.trim();
+        const name = document.getElementById('name').value.trim();
+        if (!studentId || !name) {
+            window.showNotification('Please enter both Student ID and Name.', 'error');
+            return;
+        }
+        
+        currentStudentId = studentId;
+        currentStudentName = name;
+        
+        captureButton.textContent = 'Capturing...';
+        captureButton.disabled = true;
+        const canvas = document.createElement('canvas');
+        canvas.width = 640;
+        canvas.height = 480;
+        const context = canvas.getContext('2d');
+        let count = 0;
+        capturedImages = [];
+        
+        const interval = setInterval(() => {
+            if (count < 30) {
+                context.drawImage(video, 0, 0, 640, 480);
+                capturedImages.push(canvas.toDataURL('image/jpeg', 0.8));
+                count++;
+                countSpan.textContent = count;
+                const percentage = Math.round((count / 30) * 100);
+                progressDiv.style.width = `${percentage}%`;
+                progressDiv.textContent = `${percentage}%`;
+            } else {
+                clearInterval(interval);
+                sendImagesToServer(studentId, name, capturedImages);
+            }
+        }, 150);
+    });
+
+    function sendImagesToServer(studentId, name, images) {
+    const parentPhone = document.getElementById('parent_phone').value.trim();
+    const payload = { student_id: studentId, name: name, parent_phone: parentPhone, images: images };
+        
+        captureButton.textContent = 'Uploading...';
+
+        fetch("{{ url_for('capture_faces') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(data => {
+            window.showNotification(data.message, data.status);
+            if(data.status === 'success') {
+                captureButton.textContent = 'Face Capture Complete ✓';
+                // Show fingerprint enrollment section
+                fingerprintSection.style.display = 'block';
+                fingerprintSection.scrollIntoView({ behavior: 'smooth' });
+            } else {
+                captureButton.textContent = 'Start Face Capture';
+                captureButton.disabled = false;
+            }
+        })
+        .catch(error => {
+            window.showNotification('An error occurred during enrollment.', 'error');
+            console.error('Fetch Error:', error);
+            captureButton.textContent = 'Start Face Capture';
+            captureButton.disabled = false;
+        });
+    }
+    
+    // Fingerprint Enrollment
+    let statusInterval = null;
+    
+    enrollFingerprintBtn.addEventListener('click', async () => {
+        enrollFingerprintBtn.disabled = true;
+        skipFingerprintBtn.disabled = true;
+        fpStatusText.textContent = 'Activating fingerprint sensor...';
+        
+        try {
+            // Activate fingerprint sensor
+            const activateResponse = await fetch('/fingerprint_activate', { method: 'POST' });
+            const activateData = await activateResponse.json();
+            
+            if (!activateData.success) {
+                window.showNotification('Fingerprint sensor not available', 'error');
+                fpStatusText.textContent = 'Sensor not available';
+                enrollFingerprintBtn.disabled = false;
+                skipFingerprintBtn.disabled = false;
+                return;
+            }
+            
+            fpStatusText.textContent = 'Sensor activated. Starting enrollment...';
+            fingerprintPrompt.textContent = 'Initializing...';
+            
+            // Start polling for enrollment status updates FIRST
+            statusInterval = setInterval(async () => {
+                try {
+                    const statusResponse = await fetch('/enrollment_status');
+                    const statusData = await statusResponse.json();
+                    
+                    if (statusData.messages && statusData.messages.length > 0) {
+                        const lastMessage = statusData.messages[statusData.messages.length - 1];
+                        fingerprintPrompt.textContent = lastMessage.message;
+                        
+                        if (lastMessage.type === 'prompt') {
+                            fpStatusText.textContent = '👆 Follow the prompts below...';
+                        } else if (lastMessage.type === 'status') {
+                            fpStatusText.textContent = lastMessage.message;
+                        } else if (lastMessage.type === 'success') {
+                            fpStatusText.textContent = '✓ ' + lastMessage.message;
+                        } else if (lastMessage.type === 'error') {
+                            fpStatusText.textContent = '❌ ' + lastMessage.message;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Status polling error:', error);
+                }
+            }, 300);  // Poll every 300ms for faster updates
+            
+            // Start enrollment (this will block, but polling continues in background)
+            fetch('/enroll_fingerprint', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ student_id: currentStudentId })
+            })
+            .then(response => response.json())
+            .then(enrollData => {
+                // Stop polling when enrollment completes
+                if (statusInterval) {
+                    clearInterval(statusInterval);
+                    statusInterval = null;
+                }
+                
+                if (enrollData.success) {
+                    fpStatusText.textContent = '✅ Fingerprint enrolled successfully!';
+                    fingerprintPrompt.textContent = '✓ Enrollment Complete';
+                    window.showNotification('Fingerprint enrolled successfully!', 'success');
+                    
+                    // Deactivate sensor and redirect
+                    setTimeout(async () => {
+                        await fetch('/fingerprint_deactivate', { method: 'POST' });
+                        window.location.href = "{{ url_for('index') }}";
+                    }, 2000);
+                } else {
+                    fpStatusText.textContent = '❌ Enrollment failed: ' + enrollData.message;
+                    fingerprintPrompt.textContent = 'Please try again';
+                    enrollFingerprintBtn.disabled = false;
+                    skipFingerprintBtn.disabled = false;
+                    window.showNotification('Fingerprint enrollment failed: ' + enrollData.message, 'error');
+                    
+                    // Deactivate sensor
+                    fetch('/fingerprint_deactivate', { method: 'POST' });
+                }
+            })
+            .catch(error => {
+                // Stop polling on error
+                if (statusInterval) {
+                    clearInterval(statusInterval);
+                    statusInterval = null;
+                }
+                
+                console.error('Fingerprint enrollment error:', error);
+                fpStatusText.textContent = '❌ Error during enrollment';
+                fingerprintPrompt.textContent = 'Connection error - please try again';
+                window.showNotification('Error during fingerprint enrollment', 'error');
+                enrollFingerprintBtn.disabled = false;
+                skipFingerprintBtn.disabled = false;
+                
+                // Try to deactivate sensor
+                fetch('/fingerprint_deactivate', { method: 'POST' }).catch(e => {});
+            });
+            
+        } catch (error) {
+            // Stop polling on error
+            if (statusInterval) {
+                clearInterval(statusInterval);
+                statusInterval = null;
+            }
+            
+            console.error('Fingerprint enrollment error:', error);
+            fpStatusText.textContent = '❌ Error during enrollment';
+            window.showNotification('Error during fingerprint enrollment', 'error');
+            enrollFingerprintBtn.disabled = false;
+            skipFingerprintBtn.disabled = false;
+            
+            // Try to deactivate sensor
+            try {
+                await fetch('/fingerprint_deactivate', { method: 'POST' });
+            } catch (e) {}
+        }
+    });
+    
+    // Skip fingerprint enrollment
+    skipFingerprintBtn.addEventListener('click', () => {
+        window.location.href = "{{ url_for('index') }}";
+    });
+});
+</script>
+{% endblock %}

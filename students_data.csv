@@ -1,0 +1,10 @@
+student_id,name,days_present,total_days,attendance_percentage,test_score_1,test_score_2,assignment_score,final_exam_score,performance_category,parent_phone
+UG1660,jeethesh,6,8,75.0,77,80,90,91.0,Excellent,9876543210
+UG1655,MUZZAMMIL RAHMAN,1,8,12.5,23,33,39,57.95,Average,9876543211
+UG1701,Ananya Singh,0,8,0.0,85,92,88,91.0,Excellent,9775434211
+UG1702,Ravi Kumar,1,8,12.5,50,55,60,70.0,Good,9876543213
+UG1703,Neha Sharma,1,8,12.5,38,42,35,40.0,At Risk,6360881897
+UG1704,Arjun Patel,0,8,0.0,20,25,30,28.0,At Risk,6360881259
+UG1705,Simran Kaur,1,8,12.5,95,98,97,99.0,Excellent,9876543216
+UG1661,Nikhil Revankar,1,8,12.5,79,90,89,91.0,Excellent,7489271904
+UG1662,Ruthvik K,2,8,25.0,76,87,76,28.0,At Risk,7676503625

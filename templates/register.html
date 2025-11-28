@@ -1,0 +1,123 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Register</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body {
+      background: linear-gradient(135deg, #fc5c7d 0%, #6a82fb 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .register-container {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+      padding: 40px 32px 32px 32px;
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+    }
+    .register-header {
+      margin-bottom: 24px;
+    }
+    .register-header i {
+      font-size: 2.5em;
+      color: #fc5c7d;
+    }
+    .register-header h2 {
+      font-size: 2em;
+      font-weight: 700;
+      margin: 10px 0 0 0;
+      color: #333;
+    }
+    .register-header p {
+      color: #666;
+      font-size: 1.1em;
+    }
+    .register-form label {
+      display: block;
+      margin: 12px 0 4px 0;
+      font-weight: 500;
+      color: #4a55a2;
+    }
+    .register-form input, .register-form select {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      margin-bottom: 10px;
+      font-size: 1em;
+    }
+    .register-form button {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(90deg, #fc5c7d 0%, #6a82fb 100%);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1.1em;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 10px;
+      transition: background 0.2s;
+    }
+    .register-form button:hover {
+      background: linear-gradient(90deg, #6a82fb 0%, #fc5c7d 100%);
+    }
+    .login-link {
+      margin-top: 18px;
+      font-size: 1em;
+    }
+    .login-link a {
+      color: #fc5c7d;
+      text-decoration: underline;
+    }
+    .alert {
+      margin-bottom: 10px;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 1em;
+    }
+    .alert-success { background: #e0f7e9; color: #2e7d32; }
+    .alert-danger { background: #fdecea; color: #c62828; }
+    .alert-info { background: #e3f2fd; color: #1565c0; }
+  </style>
+</head>
+<body>
+  <div class="register-container">
+    <div class="register-header">
+      <i class="fas fa-user-plus"></i>
+      <h2>Sign Up</h2>
+      <p>Create your Student/Teacher account</p>
+    </div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}
+      {% endif %}
+    {% endwith %}
+    <form method="POST" class="register-form">
+      <label for="username"><i class="fas fa-id-card"></i> Username / Student ID</label>
+      <input type="text" name="username" placeholder="Enter your ID or username" required>
+      <label for="password"><i class="fas fa-lock"></i> Password</label>
+      <input type="password" name="password" placeholder="Create a password" required>
+      <label for="role"><i class="fas fa-user-tag"></i> Role</label>
+      <select name="role" required>
+        <option value="student">Student</option>
+        <option value="teacher">Teacher</option>
+      </select>
+      <button type="submit"><i class="fas fa-user-plus"></i> Register</button>
+    </form>
+    <div class="login-link">
+      Already have an account? <a href="{{ url_for('login') }}">Login here</a>
+    </div>
+  </div>
+</body>
+</html>

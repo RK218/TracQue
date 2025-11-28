@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fingerprint Attendance</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; color: #333; }
+        .container { max-width: 900px; margin: auto; background: white; border-radius: 15px; padding: 30px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); }
+        h1, h3 { color: #333; }
+        .fingerprint-visual { position: relative; background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); border-radius: 20px; padding: 40px; margin: 20px 0; text-align: center; min-height: 300px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        .fingerprint-icon { font-size: 120px; margin-bottom: 20px; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 0.6; transform: scale(1); } 50% { opacity: 1; transform: scale(1.1); } }
+        .fingerprint-status { font-size: 24px; color: white; font-weight: 600; margin-top: 20px; }
+        .connection-status { padding: 10px 20px; border-radius: 25px; display: inline-block; margin: 20px 0; font-weight: 600; }
+        .connected { background-color: #d4edda; color: #155724; }
+        .disconnected { background-color: #f8d7da; color: #721c24; }
+        .control-panel { text-align: center; margin: 20px 0; }
+        .status { padding: 15px; border-radius: 8px; margin-top: 15px; text-align: center; font-weight: 600; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        .warning { background-color: #fff3cd; color: #856404; }
+        .attendance-list ul { list-style-type: none; padding: 0; }
+        .attendance-list li { background: #f8f9fa; padding: 10px 15px; margin-bottom: 5px; border-radius: 5px; display: flex; justify-content: space-between; animation: slideIn 0.3s ease; }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(-15px); } to { opacity: 1; transform: translateX(0); } }
+        .btn { padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; margin: 5px; transition: all 0.3s; }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        .btn-primary { background-color: #007bff; color: white; }
+        .btn-success { background-color: #28a745; color: white; }
+        .btn-secondary { background-color: #6c757d; color: white; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }
+        .stat-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; text-align: center; }
+        .stat-value { font-size: 36px; font-weight: bold; }
+        .stat-label { font-size: 14px; opacity: 0.9; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 style="text-align: center;">👆 Fingerprint Attendance</h1>
+        
+        <div class="control-panel">
+            <div id="connection-status" class="connection-status disconnected">
+                🔌 Checking connection...
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="total-students">0</div>
+                <div class="stat-label">Total Students</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="present-today">0</div>
+                <div class="stat-label">Present Today</div>
+            </div>
+        </div>
+
+        <div class="fingerprint-visual">
+            <div class="fingerprint-icon">👆</div>
+            <div class="fingerprint-status" id="fingerprint-status">Sensor inactive - Click "Activate" to start</div>
+            <div style="margin-top: 20px;">
+                <button id="activate-btn" class="btn btn-success" onclick="activateSensor()">
+                    🔌 Activate Sensor
+                </button>
+                <button id="deactivate-btn" class="btn btn-secondary" onclick="deactivateSensor()" disabled>
+                    ⏸️ Deactivate Sensor
+                </button>
+            </div>
+        </div>
+
+        <div id="status" class="status info">Ready. Click "Activate Sensor" to start scanning...</div>
+
+        <div class="attendance-list">
+            <h3>📋 Today's Fingerprint Attendance</h3>
+            <ul id="attendance-items"></ul>
+        </div>
+
+        <div style="text-align: center; margin-top: 20px;">
+            <a href="/" class="btn btn-secondary">← Back to Dashboard</a>
+        </div>
+    </div>
+
+    <script>
+        let isMonitoring = false;
+        const scannedToday = new Set();
+
+        async function checkConnection() {
+            try {
+                const response = await fetch('/fingerprint_status');
+                const data = await response.json();
+                const statusEl = document.getElementById('connection-status');
+                
+                if (data.connected) {
+                    statusEl.className = 'connection-status connected';
+                    statusEl.textContent = '✅ Fingerprint Reader Connected';
+                    if (!isMonitoring) {
+                        startMonitoring();
+                    }
+                } else {
+                    statusEl.className = 'connection-status disconnected';
+                    statusEl.textContent = '❌ Fingerprint Reader Disconnected';
+                    updateStatus('Please connect ESP32 fingerprint reader and refresh page', 'error');
+                }
+            } catch (error) {
+                console.error('Connection check failed:', error);
+            }
+        }
+
+        async function loadInitialAttendance() {
+            try {
+                const response = await fetch('/get_today_attendance_list');
+                const records = await response.json();
+                const attendanceItemsEl = document.getElementById('attendance-items');
+                attendanceItemsEl.innerHTML = '';
+                
+                records.forEach(record => {
+                    scannedToday.add(record.id);
+                    addRecordToList(record.name, record.id, record.timestamp);
+                });
+            } catch (error) {
+                console.error("Could not load initial attendance:", error);
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch('/get_live_attendance_stats');
+                const data = await response.json();
+                
+                document.getElementById('total-students').textContent = data.total_students;
+                document.getElementById('present-today').textContent = data.present_count;
+            } catch (error) {
+                console.error("Could not load stats:", error);
+            }
+        }
+
+        function updateStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        }
+
+        function updateFingerprintStatus(message) {
+            document.getElementById('fingerprint-status').textContent = message;
+        }
+
+        function addRecordToList(name, id, timestamp) {
+            const attendanceItemsEl = document.getElementById('attendance-items');
+            const li = document.createElement('li');
+            li.innerHTML = `<span><strong>${name}</strong> (ID: ${id})</span> <span>${timestamp}</span>`;
+            attendanceItemsEl.prepend(li);
+        }
+
+        async function checkForMatches() {
+            try {
+                console.log('🔍 Checking for fingerprint matches...');
+                const response = await fetch('/get_fingerprint_matches');
+                const data = await response.json();
+                console.log('📨 Match response:', data);
+                if (data.matches && data.matches.length > 0) {
+                    console.log(`✅ Found ${data.matches.length} matches!`);
+                    data.matches.forEach(match => {
+                        console.log('👤 Processing match:', match);
+                        if (match.status === 'already_present') {
+                            updateStatus(`Attendance already marked for ${match.name}`, 'warning');
+                            updateFingerprintStatus(`Already marked: ${match.name}`);
+                        } else if (!scannedToday.has(match.student_id)) {
+                            scannedToday.add(match.student_id);
+                            updateStatus(`✓ Welcome, ${match.name}! Confidence: ${match.confidence}%`, 'success');
+                            updateFingerprintStatus(`Verified: ${match.name}`);
+                            addRecordToList(match.name, match.student_id, match.timestamp);
+                            loadStats();
+                            // Show feedback animation
+                            const icon = document.querySelector('.fingerprint-icon');
+                            icon.style.animation = 'none';
+                            setTimeout(() => {
+                                icon.style.animation = 'pulse 2s infinite';
+                                updateFingerprintStatus('Place finger on sensor');
+                                setTimeout(() => {
+                                    updateStatus('Ready for next scan', 'info');
+                                }, 2000);
+                            }, 100);
+                        } else {
+                            console.log(`⚠️ Student ${match.student_id} already scanned today`);
+                        }
+                    });
+                } else {
+                    console.log('❌ No matches found');
+                }
+            } catch (error) {
+                console.error('❌ Error checking matches:', error);
+            }
+        }
+
+        function startMonitoring() {
+            isMonitoring = true;
+            // Check for matches every 500ms
+            setInterval(checkForMatches, 500);
+        }
+
+        async function activateSensor() {
+            const activateBtn = document.getElementById('activate-btn');
+            const deactivateBtn = document.getElementById('deactivate-btn');
+            
+            activateBtn.disabled = true;
+            updateStatus('Activating fingerprint sensor...', 'info');
+            updateFingerprintStatus('Activating...');
+            
+            try {
+                const response = await fetch('/fingerprint_activate', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateStatus('✓ Sensor activated! Ready to scan fingerprints', 'success');
+                    updateFingerprintStatus('Place finger on sensor');
+                    deactivateBtn.disabled = false;
+                } else {
+                    updateStatus('Failed to activate sensor: ' + data.message, 'error');
+                    updateFingerprintStatus('Activation failed');
+                    activateBtn.disabled = false;
+                }
+            } catch (error) {
+                console.error('Activation error:', error);
+                updateStatus('Error activating sensor', 'error');
+                activateBtn.disabled = false;
+            }
+        }
+
+        async function deactivateSensor() {
+            const activateBtn = document.getElementById('activate-btn');
+            const deactivateBtn = document.getElementById('deactivate-btn');
+            
+            deactivateBtn.disabled = true;
+            updateStatus('Deactivating sensor...', 'info');
+            
+            try {
+                const response = await fetch('/fingerprint_deactivate', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateStatus('Sensor deactivated to save power', 'warning');
+                    updateFingerprintStatus('Sensor inactive - Click "Activate" to start');
+                    activateBtn.disabled = false;
+                } else {
+                    updateStatus('Failed to deactivate sensor: ' + data.message, 'error');
+                    deactivateBtn.disabled = false;
+                }
+            } catch (error) {
+                console.error('Deactivation error:', error);
+                updateStatus('Error deactivating sensor', 'error');
+                deactivateBtn.disabled = false;
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            checkConnection();
+            loadInitialAttendance();
+            loadStats();
+            
+            // Refresh stats every 5 seconds
+            setInterval(loadStats, 5000);
+            
+            // Recheck connection every 10 seconds
+            setInterval(checkConnection, 10000);
+        });
+    </script>
+</body>
+</html>

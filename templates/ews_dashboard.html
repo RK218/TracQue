@@ -1,0 +1,37 @@
+{% extends "_base.html" %}
+{% block title %}Early Warning System (EWS){% endblock %}
+{% block content %}
+<div class="container mt-5">
+    <h2 class="mb-4">Early Warning System: At-Risk Students</h2>
+    {% if students.empty %}
+        <div class="alert alert-success">No students are currently flagged as at risk.</div>
+    {% else %}
+    <table class="table table-bordered table-striped">
+        <thead>
+            <tr>
+                <th>Student ID</th>
+                <th>Name</th>
+                <th>Attendance %</th>
+                <th>Test Score 1</th>
+                <th>Test Score 2</th>
+                <th>Assignment Score</th>
+                <th>Final Exam Score</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for _, student in students.iterrows() %}
+            <tr>
+                <td>{{ student.student_id }}</td>
+                <td>{{ student.name }}</td>
+                <td>{{ student.attendance_percentage }}</td>
+                <td>{{ student.test_score_1 }}</td>
+                <td>{{ student.test_score_2 }}</td>
+                <td>{{ student.assignment_score }}</td>
+                <td>{{ student.final_exam_score }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endblock %}

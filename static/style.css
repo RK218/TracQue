@@ -1,0 +1,194 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+/* --- Fallbacks for CSS Variables --- */
+:root {
+    --primary-color: #4a55a2;
+    --accent-color: #17a2b8;
+    --app-bg: #f4f6fb;
+}
+
+/* --- Global App Styles --- */
+body {
+    font-family: 'Poppins', sans-serif;
+    line-height: 1.6;
+    margin: 0;
+    padding: 0; /* Handled by app-content-wrapper margin */
+    background-color: var(--app-bg);
+    color: #34495e;
+}
+/* IMPORTANT: The main application container (.container) should be removed 
+   from other HTML files if they use the new _base.html layout, as the
+   app-content-wrapper now handles padding. */
+.container {
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+    background: none;
+    box-shadow: none;
+}
+
+/* --- Typography and Headings --- */
+h1, h2 { 
+    color: var(--primary-color);
+    font-weight: 600; 
+}
+h1 { 
+    font-size: 2.2rem; 
+    margin-bottom: 25px; 
+}
+h2 { 
+    font-size: 1.6rem; 
+    margin-bottom: 15px;
+}
+.hint { 
+    font-size: 0.9em; 
+    color: #666; 
+    margin-top: 10px; 
+}
+
+/* --- Card Styles (Matching Dashboard) --- */
+.card {
+    background-color: #ffffff;
+    border: none;
+    border-radius: 12px;
+    padding: 25px;
+    margin-bottom: 25px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* --- Form Elements and Inputs --- */
+input[type="number"], 
+input[type="text"],
+.form-select {
+    padding: 10px 15px; 
+    border: 1px solid #ced4da; 
+    border-radius: 8px; 
+    font-size: 1rem;
+    transition: border-color 0.3s;
+}
+input:focus, .form-select:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.25rem rgba(74, 85, 162, 0.25);
+}
+
+/* --- Button Styles --- */
+.button {
+    color: #000;
+    padding: 10px 20px;
+    border: 2px solid #34495e;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    text-align: center;
+    transition: all 0.3s ease-in-out;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 2px 8px rgba(44,62,80,0.10);
+}
+.button.small {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+}
+.button.primary {
+    background: #4a55a2;
+    color: #000;
+    border: 2px solid #2c3460;
+}
+.button.success {
+    background: #28a745;
+    color: #000;
+    border: 2px solid #1e7e34;
+}
+.button.danger {
+    background: #dc3545;
+    color: #000;
+    border: 2px solid #a02830;
+}
+.button.secondary {
+    background: #6c757d;
+    color: #000;
+    border: 2px solid #34495e;
+}
+.button:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(44,62,80,0.18);
+    filter: brightness(1.08);
+}
+.button:disabled { 
+    background: #ccc !important; 
+    cursor: not-allowed; 
+}
+
+/* --- Table Styles --- */
+table { 
+    width: 100%; 
+    border-collapse: collapse; 
+    margin-top: 20px; 
+    font-size: 0.95rem;
+}
+th, td { 
+    padding: 15px; 
+    text-align: left; 
+    border-bottom: 1px solid #e9ecef; 
+}
+th { 
+    background-color: #f0f4f8; 
+    font-weight: 600; 
+    color: #4a55a2;
+    text-transform: uppercase;
+}
+tbody tr:hover { 
+    background-color: #eaf6ff; 
+}
+.performance-cell .badge {
+    padding: 0.4em 0.8em;
+    font-size: 0.9em;
+    font-weight: 700;
+}
+
+/* --- Flash Messages/Notifications --- */
+.flash-messages .alert { 
+    margin-bottom: 20px; 
+    border-radius: 8px;
+}
+.warning-message { 
+    text-align: center; 
+    color: #856404; 
+    background-color: #fff3cd; 
+    padding: 15px; 
+    border-radius: 10px; 
+}
+
+/* --- Enrollment & Attendance specific (Overwrites) --- */
+video { 
+    display: block; 
+    margin: 0 auto 20px; 
+    border-radius: 10px; 
+    border: 3px solid #e9ecef; 
+    max-width: 100%;
+}
+.attendance-wrapper { 
+    display: flex; 
+    flex-wrap: wrap; 
+    gap: 20px; 
+    align-items: flex-start;
+}
+.recognized-container ul { 
+    list-style-type: none; 
+    padding: 0; 
+    max-height: 480px; 
+    overflow-y: auto; 
+}
+.recognized-container li { 
+    background-color: #eaf6ff; 
+    margin-bottom: 8px; 
+    padding: 12px 15px; 
+    border-radius: 8px; 
+    color: #0c5460; 
+    border-left: 5px solid var(--primary-color);
+    font-weight: 500;
+}

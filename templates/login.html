@@ -1,0 +1,118 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Login</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body {
+      background: #e3eafc; /* Attractive matte blue */
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .login-container {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+      padding: 40px 32px 32px 32px;
+      max-width: 400px;
+      width: 100%;
+      text-align: center;
+    }
+    .login-header {
+      margin-bottom: 24px;
+    }
+    .login-header i {
+      font-size: 2.5em;
+      color: #6a82fb;
+    }
+    .login-header h2 {
+      font-size: 2em;
+      font-weight: 700;
+      margin: 10px 0 0 0;
+      color: #333;
+    }
+    .login-header p {
+      color: #666;
+      font-size: 1.1em;
+    }
+    .login-form label {
+      display: block;
+      margin: 12px 0 4px 0;
+      font-weight: 500;
+      color: #4a55a2;
+    }
+    .login-form input {
+      width: 100%;
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      margin-bottom: 10px;
+      font-size: 1em;
+    }
+    .login-form button {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(90deg, #6a82fb 0%, #fc5c7d 100%);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1.1em;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 10px;
+      transition: background 0.2s;
+    }
+    .login-form button:hover {
+      background: linear-gradient(90deg, #fc5c7d 0%, #6a82fb 100%);
+    }
+    .register-link {
+      margin-top: 18px;
+      font-size: 1em;
+    }
+    .register-link a {
+      color: #6a82fb;
+      text-decoration: underline;
+    }
+    .alert {
+      margin-bottom: 10px;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 1em;
+    }
+    .alert-success { background: #e0f7e9; color: #2e7d32; }
+    .alert-danger { background: #fdecea; color: #c62828; }
+    .alert-info { background: #e3f2fd; color: #1565c0; }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-header">
+      <i class="fas fa-user-graduate"></i>
+      <h2>Welcome!</h2>
+      <p>Login to your Student/Teacher Portal</p>
+    </div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}
+      {% endif %}
+    {% endwith %}
+    <form method="POST" class="login-form">
+      <label for="username"><i class="fas fa-id-card"></i> Username / Student ID</label>
+      <input type="text" name="username" placeholder="Enter your ID or username" required>
+      <label for="password"><i class="fas fa-lock"></i> Password</label>
+      <input type="password" name="password" placeholder="Enter your password" required>
+      <button type="submit"><i class="fas fa-sign-in-alt"></i> Login</button>
+    </form>
+    <div class="register-link">
+      New user? <a href="{{ url_for('register') }}">Register here</a>
+    </div>
+  </div>
+</body>
+</html>

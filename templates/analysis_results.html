@@ -1,0 +1,23 @@
+{% extends "_base.html" %}
+{% block title %}Analysis Results{% endblock %}
+{% block content %}
+    <h1>Performance Analysis Results</h1>
+    <div class="card">
+        <h2>At-Risk Students</h2>
+        <p>The following students have been identified as being at risk based on the prediction model.</p>
+        {% if at_risk_students %}
+            <ul>
+                {% for student in at_risk_students %}
+                    <li>{{ student.name }} (ID: {{ student.student_id }}) - Predicted Score: {{ "%.2f"|format(student.final_exam_score|float) }}</li>
+                {% endfor %}
+            </ul>
+        {% else %}
+             <p><strong>No students were identified as being at risk.</strong></p>
+        {% endif %}
+    </div>
+
+    <div class="actions">
+        <a href="{{ url_for('index') }}" class="button secondary">Back to Home</a>
+    </div>
+{% endblock %}
+

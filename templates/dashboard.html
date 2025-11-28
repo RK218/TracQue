@@ -1,0 +1,547 @@
+{% extends "_base.html" %}
+{% block title %}Student Roster & Dashboard{% endblock %}
+
+{% block styles %}
+<style>
+    /* ---------------------------------- */
+    /* --- APPLICATION LAYOUT STYLES --- */
+    /* ---------------------------------- */
+    :root {
+        --sidebar-width: 250px;
+        --app-bg: #f4f6f9; /* Light background for the overall app */
+        --content-padding: 30px;
+        --primary-color: #4a55a2; /* Deep Blue/Purple for software feel */
+        --accent-color: #6a82fb; /* Lighter Blue for highlights */
+    }
+
+    /* Styles added to dashboard to ensure smooth transition to app look */
+    .app-content-wrapper {
+        padding: 30px;
+    }
+    .app-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        padding-bottom: 15px;
+        border-bottom: 1px solid #ddd;
+    }
+
+    /* Enhanced Card Styling */
+    .card {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        transition: all 0.3s ease;
+        margin-bottom: 25px;
+        scroll-margin-top: 100px; /* For smooth scrolling to sections */
+    }
+    .card h2, .card h3 {
+        color: var(--primary-color);
+        font-weight: 600;
+        margin-bottom: 15px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    
+    /* ---------------------------------- */
+    /* --- SNAPSHOT CARD STYLES (Interactive) --- */
+    /* ---------------------------------- */
+    .clickable-card {
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+        text-decoration: none;
+        color: inherit;
+        display: block;
+        height: 100%;
+    }
+    .clickable-card:hover {
+        transform: translateY(-5px); /* More dramatic hover for software feel */
+        box-shadow: 0 15px 30px rgba(0, 0, 0, 0.25);
+    }
+    .clickable-card .card {
+        height: 100%;
+        border-radius: 10px;
+    }
+    .clickable-card:first-child .card {
+        background: linear-gradient(135deg, #17a2b8 0%, #20c997 100%) !important;
+    }
+    .clickable-card:nth-child(2) .card {
+        background: linear-gradient(135deg, var(--primary-color) 0%, #6a82fb 100%) !important;
+    }
+    .card p { margin-bottom: 0; }
+    .card .h4 { font-size: 2.5em; font-weight: 700; }
+    
+    /* Jump to Tool Dropdown Styling */
+    #jump-to-tool {
+        background-color: #fff;
+        border: 1px solid var(--primary-color);
+        color: var(--primary-color);
+        padding: 8px 15px;
+        border-radius: 8px;
+        font-weight: 600;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+    <div class="app-content-area">
+        <div class="app-header">
+            <h1>Student Management & Performance</h1>
+            <div class="d-flex align-items-center gap-3">
+                <select id="jump-to-tool" class="form-select" onchange="smoothScrollTo(this.value)">
+                    <option value="">Jump to Tool...</option>
+                    <option value="section-roster">Student Roster</option>
+                    <option value="section-data">Data Management</option>
+                    <option value="section-setup">System Setup</option>
+                    <option value="section-whatif">What-If Analysis</option>
+                </select>
+                <form action="{{ url_for('analyze_performance_route') }}" method="post" class="d-inline-flex">
+                    <select name="model_choice" class="form-select me-2 form-select-sm" style="min-width: 240px; text-align: center; padding-left: 0;">
+                        <option value="DecisionTreeRegressor">Decision Tree Regressor</option>
+                        <option value="LinearRegression">Linear Regression</option>
+                    </select>
+                    <button type="submit" class="button danger small">Run Prediction & Analysis</button>
+                </form>
+                <a href="{{ url_for('logout') }}" class="button secondary small ms-3">Logout</a>
+            </div>
+        </div>
+
+        {# ATTENDANCE SNAPSHOT CARDS #}
+        <div class="row mb-5">
+            <h2 style="color: #666; font-size: 1.5em; margin-bottom: 20px;"><i class="fas fa-chart-pie"></i> Real-Time Snapshot</h2>
+            
+            {# CYAN CARD: Links to Visualizations #}
+            <div class="col-md-6 mb-3">
+                <a href="{{ url_for('visualizations') }}" class="clickable-card">
+                    <div class="card p-4 text-center text-white bg-info">
+                        <i class="fas fa-calendar-alt fa-3x mb-3"></i>
+                        <p class="h4">{{ total_days|int }}</p>
+                        <p class="mb-0">Total School Days Recorded</p>
+                    </div>
+                </a>
+            </div>
+            
+            {# BLUE CARD: Links back to index with the Low Attendance filter applied #}
+            <div class="col-md-6 mb-3">
+                <a href="{{ url_for('index', filter_trend='low') }}" class="clickable-card" id="not-attended-link">
+                    <div class="card p-4 text-center text-white bg-primary">
+                        <i class="fas fa-users-slash fa-3x mb-3"></i>
+                        <p class="h4" id="missing-attendance-data">
+                            {% set missing_count = 0 %}
+                            {% for student in students %}
+                                {% if student.attendance_percentage == 0.0 and total_days > 0 %}
+                                    {% set missing_count = missing_count + 1 %}
+                                {% endif %}
+                            {% endfor %}
+                            {{ missing_count }}
+                        </p>
+                        <p class="mb-0">Students Not Yet Attended</p>
+                    </div>
+                </a>
+            </div>
+        </div>
+
+            {# ABSENT STUDENTS SECTION #}
+            <div class="card p-4 mb-5 bg-white">
+                <h2 style="color: #d9534f;"><i class="fas fa-user-slash"></i> Absent Students Today</h2>
+                {% if absent_students and absent_students|length > 0 %}
+                    <ul class="list-group list-group-flush">
+                        {% for student in absent_students %}
+                            <li class="list-group-item">
+                                <strong>{{ student.student_id }}</strong> - {{ student.name }}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-success">All students have attended today!</p>
+                {% endif %}
+            </div>
+
+        {# QUICK ACCESS CARDS FOR ATTENDANCE METHODS #}
+        <div class="row mb-5">
+            <h2 style="color: #666; font-size: 1.5em; margin-bottom: 20px;"><i class="fas fa-hand-pointer"></i> Quick Access - Attendance Methods</h2>
+            
+            {# Face Recognition #}
+            <div class="col-md-4 mb-3">
+                <a href="{{ url_for('live_attendance_page') }}" class="clickable-card">
+                    <div class="card p-4 text-center" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white;">
+                        <i class="fas fa-video fa-3x mb-3"></i>
+                        <p class="h5 mb-0">Live Face Attendance</p>
+                    </div>
+                </a>
+            </div>
+            
+            {# Barcode Scanner #}
+            <div class="col-md-4 mb-3">
+                <a href="{{ url_for('barcode_attendance_page') }}" class="clickable-card">
+                    <div class="card p-4 text-center" style="background: linear-gradient(135deg, #fd7e14 0%, #ffc107 100%); color: white;">
+                        <i class="fas fa-qrcode fa-3x mb-3"></i>
+                        <p class="h5 mb-0">Barcode Scanner</p>
+                    </div>
+                </a>
+            </div>
+            
+            {# Fingerprint Scanner #}
+            <div class="col-md-4 mb-3">
+                <a href="{{ url_for('fingerprint_attendance_page') }}" class="clickable-card">
+                    <div class="card p-4 text-center" style="background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%); color: white;">
+                        <i class="fas fa-fingerprint fa-3x mb-3"></i>
+                        <p class="h5 mb-0">Fingerprint Scanner</p>
+                    </div>
+                </a>
+            </div>
+        </div>
+
+        {# --- SYSTEM SETUP / ACTIONS CARD --- #}
+        <div class="card p-4 mb-5 bg-white" id="section-setup">
+            <h2><i class="fas fa-tools"></i> System Setup & Training</h2>
+            <div class="d-flex justify-content-between align-items-center flex-wrap">
+                <div>
+                    <p class="mb-1 text-muted">After enrolling new students, click this button to process their faces for Live Attendance.</p>
+                </div>
+                <button id="train-model-btn" class="button success"><i class="fas fa-brain"></i> **Train Face Model**</button>
+            </div>
+        </div>
+        
+        {# --- DATA MANAGEMENT CARD --- #}
+        <div class="card p-4 mb-5 bg-white" id="section-data">
+            <h2><i class="fas fa-database"></i> Data Management</h2>
+            <div class="row">
+                {% if session.get('role') == 'teacher' %}
+                <div class="col-md-6">
+                    <h3><i class="fas fa-upload"></i> Upload/Merge Data</h3>
+                    <form action="{{ url_for('upload_data') }}" method="post" enctype="multipart/form-data" class="d-flex flex-column">
+                        <label for="file" class="form-label text-muted">Upload CSV to Update/Add Students:</label>
+                        <input type="file" name="file" id="file" required class="form-control mb-2">
+                        <button type="submit" class="button primary mt-2">Upload & Merge Data</button>
+                    </form>
+                </div>
+                <div class="col-md-6">
+                    <h3><i class="fas fa-user-plus"></i> Manually Add Student</h3>
+                    <form action="{{ url_for('add_student') }}" method="post" class="row g-2">
+                        <div class="col-12"><input type="text" name="student_id" placeholder="ID" required class="form-control form-control-sm"></div>
+                        <div class="col-12"><input type="text" name="name" placeholder="Name" required class="form-control form-control-sm"></div>
+                        <div class="col-md-4"><input type="number" name="test_score_1" placeholder="Test 1 (0)" min="0" max="100" value="0" class="form-control form-control-sm"></div>
+                        <div class="col-md-4"><input type="number" name="test_score_2" placeholder="Test 2 (0)" min="0" max="100" value="0" class="form-control form-control-sm"></div>
+                        <div class="col-md-4"><input type="number" name="assignment_score" placeholder="Assign (0)" min="0" max="100" value="0" class="form-control form-control-sm"></div>
+                        <div class="col-12"><input type="text" name="parent_phone" placeholder="Parent Phone Number" required class="form-control form-control-sm"></div>
+                        <div class="col-12"><button type="submit" class="button success w-100 mt-2">Add Student</button></div>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        {# --- STUDENT ROSTER CARD --- #}
+        <div class="card p-4 bg-white" id="section-roster">
+            <h2><i class="fas fa-users"></i> Student Roster</h2>
+            
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <form class="d-inline-flex" action="{{ url_for('index') }}" method="get">
+                    <input class="form-control me-2" type="search" placeholder="Search by ID or Name" aria-label="Search" name="query" value="{{ search_query }}">
+                    <button class="button primary" type="submit">Search</button>
+                </form>
+
+                <div class="d-flex align-items-center">
+                    <label for="attendance-filter" class="form-label mb-0 me-2 text-muted small">Filter by Trend:</label>
+                    <select id="attendance-filter" class="form-select form-select-sm" style="width: 200px;">
+                        <option value="all">Show All Students</option>
+                        <option value="low">Low Attendance (< 65%)</option>
+                        <option value="average">Average Attendance (65% - 85%)</option>
+                        <option value="high">High Attendance (> 85%)</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-hover table-striped">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Attendance (Days/%)</th> 
+                            <th>Test 1</th>
+                            <th>Test 2</th>
+                            <th>Assignment</th>
+                            <th>Final Score</th>
+                            <th>Category</th>
+                            <th>Parent Phone</th>
+                            {% if can_edit %}<th class="text-center" style="width: 100px;">Actions</th>{% endif %}
+                        </tr>
+                    </thead>
+                    <tbody id="student-table-body">
+                        {% for student in students %}
+                        {% set days_attended = (student.attendance_percentage / 100 * total_days)|round %}
+                        <tr 
+                            id="row-{{ student.student_id }}"
+                            data-attendance-percent="{{ student.attendance_percentage }}">
+                            <td>{{ student.student_id }}</td>
+                            <td>
+                                {{ student.name }}
+                                {% if can_edit %}
+                                 <button class="button small secondary edit-btn" data-bs-toggle="collapse" data-bs-target="#edit-{{ student.student_id }}" aria-expanded="false" aria-controls="edit-{{ student.student_id }}">Edit</button>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if student.total_days|int > 0 %}
+                                    <strong>{{ student.days_present|int }} / {{ student.total_days|int }}</strong> days 
+                                    <span class="badge bg-secondary">{{ student.attendance_percentage }}%</span>
+                                {% else %}
+                                    <strong>0 / 0</strong> days
+                                    <span class="badge bg-secondary">0.0%</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ student.test_score_1 }}</td>
+                            <td>{{ student.test_score_2 }}</td>
+                            <td>{{ student.assignment_score }}</td>
+                            <td>{{ student.final_exam_score }}</td>
+                            <td><span class="badge text-bg-{{ {'At Risk':'danger', 'Average':'warning', 'Good':'primary', 'Excellent':'success', 'N/A':'secondary'}[student.performance_category] }}">{{ student.performance_category }}</span></td>
+                            <td>{{ student.parent_phone }}</td>
+                            {% if can_edit %}
+                            <td class="text-center">
+                                <form action="{{ url_for('delete_student', student_id=student.student_id) }}" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to delete {{ student.name }}?');">
+                                    <button type="submit" class="button small danger"><i class="fas fa-trash"></i> Delete</button>
+                                </form>
+                            </td>
+                            {% endif %}
+                        </tr>
+                        {% if can_edit %}
+                        <tr class="collapse" id="edit-{{ student.student_id }}">
+                            <td colspan="9" class="p-0 border-0">
+                                <form action="{{ url_for('edit_student', student_id=student.student_id) }}" method="post" class="p-2 bg-light">
+                                    <div class="row g-2 align-items-center">
+                                        <div class="col-1 text-center"><strong>Edit:</strong></div>
+                                        <div class="col-md-2">
+                                            <input type="text" name="name" value="{{ student.name }}" placeholder="Name" required class="form-control form-control-sm">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <input type="number" name="test_score_1" value="{{ student.test_score_1|default(0) }}" min="0" max="100" placeholder="Test 1" class="form-control form-control-sm" autocomplete="off">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <input type="number" name="test_score_2" value="{{ student.test_score_2|default(0) }}" min="0" max="100" placeholder="Test 2" class="form-control form-control-sm" autocomplete="off">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <input type="number" name="assignment_score" value="{{ student.assignment_score|default(0) }}" min="0" max="100" placeholder="Assignment" class="form-control form-control-sm" autocomplete="off">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <input type="number" name="days_present" value="{{ student.days_present|default(0) }}" min="0" max="{{ student.total_days|default(total_days) }}" placeholder="Days Present" class="form-control form-control-sm" autocomplete="off">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <input type="number" name="total_days" value="{{ student.total_days|default(total_days) }}" min="0" max="{{ total_days }}" placeholder="Total Days" class="form-control form-control-sm" autocomplete="off">
+                                        </div>
+                                        <div class="col-md-2">
+                                            <input type="text" name="parent_phone" value="{{ student.parent_phone|default('') }}" placeholder="Parent Phone" class="form-control form-control-sm">
+                                        </div>
+                                        <div class="col-md-3 d-flex">
+                                            <button type="submit" class="button success small me-1">Save</button>
+                                            <button type="button" class="button secondary small" data-bs-toggle="collapse" data-bs-target="#edit-{{ student.student_id }}">Cancel</button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        {# --- WHAT-IF ANALYSIS CARD --- #}
+        <div class="card mt-4 p-4 bg-white" id="section-whatif">
+            <h2><i class="fas fa-chart-bar"></i> What-If Analysis</h2>
+            <p class="text-muted">Adjust scores and attendance hypothetically to predict the student's final score and category.</p>
+            <div id="what-if-form" class="row g-3">
+                <div class="col-md-3"><label for="wi_attendance" class="form-label">Attendance (%): <span id="wi_attendance_val">70</span></label><input type="range" id="wi_attendance" min="0" max="100" value="70" class="form-range"></div>
+                <div class="col-md-3"><label for="wi_test1" class="form-label">Test 1 Score: <span id="wi_test1_val">75</span></label><input type="range" id="wi_test1" min="0" max="100" value="75" class="form-range"></div>
+                <div class="col-md-3"><label for="wi_test2" class="form-label">Test 2 Score: <span id="wi_test2_val">80</span></label><input type="range" id="wi_test2" min="0" max="100" value="80" class="form-range"></div>
+                <div class="col-md-3"><label for="wi_assignment" class="form-label">Assignment Score: <span id="wi_assignment_val">85</span></label><input type="range" id="wi_assignment" min="0" max="100" value="85" class="form-range"></div>
+                <div class="col-12 text-center mt-4">
+                    <button id="run-what-if" class="button primary"><i class="fas fa-calculator"></i> Predict Final Score</button>
+                    <div id="prediction-result" class="mt-3 h4"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function smoothScrollTo(elementId) {
+        if (!elementId) return;
+        const element = document.getElementById(elementId);
+        if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }
+
+    // --- Real-time attendance update ---
+    function fetchRosterUpdate() {
+        // Track open edit row before refresh
+        let openEditId = null;
+        const openEditRow = document.querySelector('.collapse.show');
+        if (openEditRow) {
+            openEditId = openEditRow.id;
+        }
+        fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(response => response.text())
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const newTable = doc.getElementById('student-table-body');
+                if (newTable) {
+                    document.getElementById('student-table-body').innerHTML = newTable.innerHTML;
+                    // Restore open edit row after refresh
+                    if (openEditId) {
+                        const restoredRow = document.getElementById(openEditId);
+                        if (restoredRow) {
+                            restoredRow.classList.add('show');
+                        }
+                    }
+                }
+            });
+    }
+    // setInterval(fetchRosterUpdate, 3000); // Auto-refresh disabled for manual editing
+
+    document.addEventListener('DOMContentLoaded', () => {
+        
+        // --- FIXED: Train Button Logic ---
+        document.getElementById('train-model-btn').addEventListener('click', () => {
+            const trainButton = document.getElementById('train-model-btn');
+            trainButton.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i> Training... Please wait (10-30s)';
+            trainButton.disabled = true;
+            trainButton.classList.remove('success');
+            trainButton.classList.add('warning');
+
+            fetch("{{ url_for('train_model_route') }}", { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    window.showNotification(data.message, data.status);
+                })
+                .catch(() => {
+                    window.showNotification('An error occurred during training. Check server logs.', 'error');
+                })
+                .finally(() => {
+                    trainButton.innerHTML = '<i class="fas fa-brain"></i> Train Face Model';
+                    trainButton.disabled = false;
+                    trainButton.classList.remove('warning');
+                    trainButton.classList.add('success');
+                });
+        });
+        
+        // --- What-If Analysis Logic ---
+        const sliders = ['wi_attendance', 'wi_test1', 'wi_test2', 'wi_assignment'];
+        
+        sliders.forEach(id => {
+            const slider = document.getElementById(id);
+            const valueSpan = document.getElementById(id + '_val');
+            slider.addEventListener('input', () => {
+                valueSpan.textContent = slider.value;
+            });
+        });
+
+        document.getElementById('run-what-if').addEventListener('click', () => {
+            const attendance = document.getElementById('wi_attendance').value;
+            const test1 = document.getElementById('wi_test1').value;
+            const test2 = document.getElementById('wi_test2').value;
+            const assignment = document.getElementById('wi_assignment').value;
+            const resultDiv = document.getElementById('prediction-result');
+            resultDiv.textContent = 'Calculating...';
+            resultDiv.className = 'mt-3 h4 text-info';
+
+            fetch("{{ url_for('what_if_analysis') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ attendance, test1, test2, assignment })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    resultDiv.textContent = `Error: ${data.error}`;
+                    resultDiv.className = 'mt-3 h4 text-danger';
+                    return;
+                }
+                let colorClass = 'text-success';
+                if (data.category === 'At Risk') colorClass = 'text-danger';
+                else if (data.category === 'Average') colorClass = 'text-warning';
+                else if (data.category === 'Good') colorClass = 'text-primary';
+                
+                resultDiv.innerHTML = `Predicted Final Score: <strong>${data.predicted_score}</strong> | Category: <span class="${colorClass}"><strong>${data.category}</strong></span>`;
+                resultDiv.className = 'mt-3 h4';
+            })
+            .catch(error => {
+                resultDiv.textContent = 'Prediction failed due to server error.';
+                resultDiv.className = 'mt-3 h4 text-danger';
+                console.error('What-If Error:', error);
+            });
+        });
+        
+        // --- ATTENDANCE FILTER LOGIC ---
+        const attendanceFilter = document.getElementById('attendance-filter');
+        const studentTableBody = document.getElementById('student-table-body');
+        
+        // Check if a filter value was passed in the URL (from clicking a stat card)
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlFilterTrend = urlParams.get('filter_trend');
+
+        const filterTable = () => {
+            const filterValue = attendanceFilter.value;
+            const rows = studentTableBody.querySelectorAll('tr[data-attendance-percent]');
+            
+            rows.forEach(row => {
+                const percent = parseFloat(row.getAttribute('data-attendance-percent'));
+                let showRow = false;
+                switch(filterValue) {
+                    case 'all':
+                        showRow = true;
+                        break;
+                    case 'low':
+                        showRow = percent < 65;
+                        break;
+                    case 'average':
+                        showRow = percent >= 65 && percent <= 85;
+                        break;
+                    case 'high':
+                        showRow = percent > 85;
+                        break;
+                }
+                const editRow = row.nextElementSibling;
+                if (showRow) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                    if (editRow && editRow.classList.contains('collapse')) {
+                        editRow.classList.remove('show');
+                    }
+                }
+            });
+        };
+        
+        // Apply filter on load if passed via URL
+        if (urlFilterTrend === 'low') {
+            attendanceFilter.value = 'low';
+        }
+        
+        attendanceFilter.addEventListener('change', filterTable);
+        filterTable(); 
+        
+        // --- Toggle edit row visibility ---
+        document.querySelectorAll('.edit-btn').forEach(button => {
+            button.addEventListener('click', (event) => {
+                const targetId = event.currentTarget.getAttribute('data-bs-target');
+                const targetRow = document.querySelector(targetId);
+                // Hide other open edit rows before showing this one
+                document.querySelectorAll('.collapse.show').forEach(openRow => {
+                    if (openRow !== targetRow) {
+                        openRow.classList.remove('show');
+                    }
+                });
+                // Toggle only the Bootstrap 'show' class
+                targetRow.classList.toggle('show');
+            });
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,207 @@
+{% extends "_base.html" %}
+{% block title %}Data Visualizations{% endblock %}
+
+{% block content %}
+<h1>Data Visualizations</h1>
+<p class="hint">Visual overview of the entire student roster's performance and trends.</p>
+
+<div class="row">
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <h2 class="card-header">Performance Category Distribution</h2>
+            <div class="card-body"><canvas id="performancePieChart"></canvas></div>
+        </div>
+    </div>
+    
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <h2 class="card-header">Final Score Distribution</h2>
+            <div class="card-body"><canvas id="finalScoreHistogram"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <h2 class="card-header">Attendance vs. Final Exam Score</h2>
+            <div class="card-body"><canvas id="attendanceScatterChart"></canvas></div>
+        </div>
+    </div>
+
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <h2 class="card-header">Average Scores by Category</h2>
+            <div class="card-body"><canvas id="scoresByCategoryChart"></canvas></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    fetch("{{ url_for('get_chart_data') }}")
+        .then(response => response.json())
+        .then(data => {
+            // Chart 1: Performance Distribution Pie Chart
+            const perfLabels = Object.keys(data.performance_counts);
+            const perfData = Object.values(data.performance_counts);
+            new Chart(document.getElementById('performancePieChart'), {
+                type: 'pie',
+                data: {
+                    labels: perfLabels,
+                    datasets: [{
+                        data: perfData,
+                        backgroundColor: ['#dc3545', '#28a745', '#17a2b8', '#ffc107', '#6c757d', '#007bff']
+                    }]
+                },
+                options: { 
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            display: perfData.length > 1 // Hide legend if only one category
+                        }
+                    }
+                }
+            });
+
+            // Chart 2: Final Score Distribution Histogram
+            const scoreLabels = Object.keys(data.score_distribution);
+            const scoreData = Object.values(data.score_distribution);
+            new Chart(document.getElementById('finalScoreHistogram'), {
+                type: 'bar',
+                data: {
+                    labels: scoreLabels,
+                    datasets: [{
+                        label: 'Number of Students',
+                        data: scoreData,
+                        backgroundColor: scoreLabels.includes('No Data') ? '#6c757d' : '#764ba2'
+                    }]
+                },
+                options: { 
+                    responsive: true, 
+                    scales: { 
+                        y: { 
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1 // Ensure integer ticks for small datasets
+                            }
+                        } 
+                    },
+                    plugins: {
+                        legend: {
+                            display: !scoreLabels.includes('No Data') // Hide legend for no data case
+                        }
+                    }
+                }
+            });
+
+            // Chart 3: Attendance vs. Final Score Scatter Plot
+            const scatterPoints = data.scatter_data.map(p => ({ x: p.attendance_percentage, y: p.final_exam_score }));
+            new Chart(document.getElementById('attendanceScatterChart'), {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: scatterPoints.length === 1 && scatterPoints[0].x === 0 && scatterPoints[0].y === 0 ? 'No Data Available' : 'Student Performance',
+                        data: scatterPoints,
+                        backgroundColor: scatterPoints.length === 1 && scatterPoints[0].x === 0 && scatterPoints[0].y === 0 ? '#6c757d' : '#667eea'
+                    }]
+                },
+                options: { 
+                    responsive: true, 
+                    scales: { 
+                        x: { 
+                            min: 0, 
+                            max: 100,
+                            title: {
+                                display: true,
+                                text: 'Attendance Percentage (%)'
+                            }
+                        }, 
+                        y: { 
+                            min: 0, 
+                            max: 100,
+                            title: {
+                                display: true,
+                                text: 'Final Exam Score'
+                            }
+                        } 
+                    },
+                    plugins: {
+                        legend: {
+                            display: !(scatterPoints.length === 1 && scatterPoints[0].x === 0 && scatterPoints[0].y === 0)
+                        }
+                    }
+                }
+            });
+            
+            // Chart 4: Average Scores by Performance Category Grouped Bar Chart
+            const groupedBarCtx = document.getElementById('scoresByCategoryChart');
+            const categories = Object.keys(data.grouped_scores.test_score_1);
+            const hasSingleStudent = categories.includes('Single Student');
+            
+            new Chart(groupedBarCtx, {
+                type: 'bar',
+                data: {
+                    labels: categories,
+                    datasets: [
+                        { 
+                            label: 'Test 1', 
+                            data: Object.values(data.grouped_scores.test_score_1), 
+                            backgroundColor: hasSingleStudent ? '#007bff' : 'rgba(255, 99, 132, 0.7)' 
+                        },
+                        { 
+                            label: 'Test 2', 
+                            data: Object.values(data.grouped_scores.test_score_2), 
+                            backgroundColor: hasSingleStudent ? '#28a745' : 'rgba(54, 162, 235, 0.7)' 
+                        },
+                        { 
+                            label: 'Assignment', 
+                            data: Object.values(data.grouped_scores.assignment_score), 
+                            backgroundColor: hasSingleStudent ? '#ffc107' : 'rgba(75, 192, 192, 0.7)' 
+                        }
+                    ]
+                },
+                options: { 
+                    responsive: true, 
+                    scales: { 
+                        y: { 
+                            beginAtZero: true, 
+                            max: hasSingleStudent ? undefined : 100, // Don't cap for single student
+                            title: {
+                                display: true,
+                                text: 'Average Score'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: hasSingleStudent ? 'Student Category' : 'Performance Category'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: !hasSingleStudent // Hide legend for single student case
+                        }
+                    }
+                }
+            });
+        })
+        .catch(error => {
+            console.error("Error fetching chart data:", error);
+            // Show error message on page
+            document.querySelectorAll('canvas').forEach(canvas => {
+                const ctx = canvas.getContext('2d');
+                ctx.font = '16px Arial';
+                ctx.fillStyle = '#dc3545';
+                ctx.textAlign = 'center';
+                ctx.fillText('Error loading chart data', canvas.width / 2, canvas.height / 2);
+            });
+        });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,32 @@
+[
+  {
+    "username": "teacher1",
+    "password": "teachpass",
+    "role": "teacher"
+  },
+  {
+    "username": "student1",
+    "password": "studpass",
+    "role": "student"
+  },
+  {
+    "username": "UG1660",
+    "password": "jeethesh30",
+    "role": "student"
+  },
+  {
+    "username": "UG1655",
+    "password": "muzz33",
+    "role": "student"
+  },
+  {
+    "username": "UG1661",
+    "password": "Nikhil",
+    "role": "student"
+  },
+  {
+    "username": "UG1662",
+    "password": "RuthviK",
+    "role": "student"
+  }
+]

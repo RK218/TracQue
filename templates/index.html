@@ -1,0 +1,592 @@
+{% extends "_base.html" %}
+{% block title %}Dashboard - Student Performance Analyzer{% endblock %}
+
+{% block styles %}
+<style>
+    /* General Page & Card Styling */
+    :root {
+        --primary-color: #667eea;
+        --secondary-color: #764ba2;
+        --success-color: #4caf50;
+        --danger-color: #f44336;
+        --warning-color: #ffc107;
+        --info-color: #17a2b8;
+        --light-gray: #f8f9fa;
+        --dark-gray: #343a40;
+    }
+
+    /* Stats Bar Enhancements */
+    .stats-bar {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+        background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+        color: white;
+        padding: 25px;
+        border-radius: 16px;
+        margin-bottom: 30px;
+        gap: 20px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+    }
+    .stat-item { text-align: center; }
+    .stat-number { font-size: 2.2em; font-weight: 700; display: block; transition: transform 0.3s ease; }
+    .stat-item:hover .stat-number { transform: scale(1.1); }
+    .stat-label { font-size: 0.9em; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-updated { animation: statHighlight 1s ease; }
+    @keyframes statHighlight {
+        50% { transform: scale(1.15); color: var(--warning-color); }
+    }
+
+    /* Auto-Refresh Toggle */
+    .auto-refresh-toggle { display: flex; align-items: center; gap: 8px; }
+    .toggle-switch { position: relative; display: inline-block; width: 50px; height: 28px; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; inset: 0; background-color: #ccc; transition: .4s; border-radius: 28px; }
+    .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .slider { background-color: var(--success-color); }
+    input:checked + .slider:before { transform: translateX(22px); }
+    .refresh-indicator { display: inline-block; width: 10px; height: 10px; background-color: var(--success-color); border-radius: 50%; animation: pulse 1.5s infinite; opacity: 0; transition: opacity 0.3s; }
+    .refresh-indicator.active { opacity: 1; }
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.3); opacity: 0.7; }
+    }
+
+    /* Table Enhancements: Filtering, Sorting, Pagination */
+    .table-controls {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 15px;
+        padding: 15px;
+        background-color: var(--light-gray);
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    .table-controls .form-control, .table-controls .form-select { max-width: 250px; }
+    #pagination-controls { display: flex; align-items: center; gap: 5px; }
+    #pagination-controls .page-link { cursor: pointer; }
+    #pagination-controls .page-item.active .page-link { background-color: var(--primary-color); border-color: var(--primary-color); }
+    
+    /* Sortable Table Headers */
+    #student-table th.sortable { cursor: pointer; user-select: none; }
+    #student-table th.sortable:hover { background-color: #e9ecef; }
+    #student-table th.sortable::after {
+        content: '\\2195'; /* Up-Down Arrow */
+        opacity: 0.3;
+        margin-left: 5px;
+    }
+    #student-table th.sort-asc::after { content: '\\2191'; opacity: 1; } /* Up Arrow */
+    #student-table th.sort-desc::after { content: '\\2193'; opacity: 1; } /* Down Arrow */
+    
+    /* Row Highlighting */
+    tr[data-performance="At Risk"] {
+        background-color: rgba(244, 67, 54, 0.08);
+        border-left: 4px solid var(--danger-color);
+    }
+    tr[data-performance="Excellent"] {
+        background-color: rgba(76, 175, 80, 0.08);
+        border-left: 4px solid var(--success-color);
+    }
+    .performance-cell { font-weight: bold; }
+    .performance-at-risk { color: var(--danger-color); }
+    .performance-average { color: var(--warning-color); }
+    .performance-good { color: var(--info-color); }
+    .performance-excellent { color: var(--success-color); }
+
+    /* Data Update Animation */
+    .data-updated { animation: highlight 1.5s ease; }
+    @keyframes highlight {
+        from { background-color: var(--warning-color); color: white; }
+    }
+
+    /* Modal Styling */
+    .modal-header { background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%); color: white; }
+    .modal-header .btn-close { filter: invert(1) grayscale(100%) brightness(200%); }
+</style>
+{% endblock %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>Dashboard</h1>
+        <div class="auto-refresh-toggle">
+            <span class="form-check-label">Auto-Refresh:</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="auto-refresh-toggle" checked>
+                <span class="slider"></span>
+            </label>
+            <span class="refresh-indicator" id="refresh-indicator"></span>
+        </div>
+    </div>
+
+    <div class="stats-bar">
+        <div class="stat-item"><span class="stat-number" id="total-students-stat">0</span><span class="stat-label">Total Students</span></div>
+        <div class="stat-item"><span class="stat-number" id="present-today-stat">0</span><span class="stat-label">Present Today</span></div>
+        <div class="stat-item"><span class="stat-number" id="avg-attendance-stat">0%</span><span class="stat-label">Avg Attendance</span></div>
+        <div class="stat-item"><span class="stat-number" id="at-risk-stat">0</span><span class="stat-label">At Risk</span></div>
+        <div class="stat-item"><span class="stat-number" id="average-stat">0</span><span class="stat-label">Average</span></div>
+        <div class="stat-item"><span class="stat-number" id="excellent-stat">0</span><span class="stat-label">Excellent</span></div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <h2><i class="fas fa-cogs"></i> System Actions</h2>
+                <div class="actions">
+                    <button id="train-model-btn" class="button primary"><i class="fas fa-brain"></i> Train Face Model</button>
+                    <button class="button" data-bs-toggle="modal" data-bs-target="#whatIfModal"><i class="fas fa-magic"></i> What-If Analysis</button>
+                </div>
+                <p class="hint mt-2">Train the model after enrolling new students or run a what-if scenario.</p>
+            </div>
+        </div>
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <h2><i class="fas fa-chart-line"></i> Analyze & Predict Performance</h2>
+                <form action="{{ url_for('analyze_performance_route') }}" method="post">
+                    <div class="d-flex align-items-center">
+                        <select name="model_choice" id="model_choice" class="form-select me-2">
+                            <option value="LinearRegression">Linear Regression</option>
+                            <option value="DecisionTree">Decision Tree Regressor</option>
+                        </select>
+                        <button type="submit" class="button primary">Run Analysis</button>
+                    </div>
+                </form>
+                <p class="hint mt-2">Predict final scores for students based on current data using the selected model.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <h2 class="mb-0">Current Student Roster</h2>
+            <button class="button success" data-bs-toggle="modal" data-bs-target="#addStudentModal"><i class="fas fa-user-plus"></i> Add New Student</button>
+        </div>
+
+        <div class="table-controls">
+            <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-search"></i></span>
+                <input type="text" id="search-input" class="form-control" placeholder="Type to search...">
+            </div>
+            <div class="input-group">
+                <label class="input-group-text" for="filter-category"><i class="fas fa-filter"></i></label>
+                <select id="filter-category" class="form-select">
+                    <option value="">All Categories</option>
+                    <option value="Excellent">Excellent</option>
+                    <option value="Good">Good</option>
+                    <option value="Average">Average</option>
+                    <option value="At Risk">At Risk</option>
+                    <option value="N/A">N/A</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <button id="export-csv-btn" class="btn btn-outline-secondary"><i class="fas fa-file-csv"></i> Export Selected</button>
+            </div>
+        </div>
+        
+        <div class="table-responsive">
+            <table id="student-table" class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-center"><input type="checkbox" id="select-all-checkbox"></th>
+                        <th class="sortable" data-sort="student_id">ID</th>
+                        <th class="sortable" data-sort="name">Name</th>
+                        <th class="sortable" data-sort="attendance_percentage">Attendance %</th>
+                        <th class="sortable" data-sort="test_score_1">Test 1</th>
+                        <th class="sortable" data-sort="test_score_2">Test 2</th>
+                        <th class="sortable" data-sort="assignment_score">Assignment</th>
+                        <th class="sortable" data-sort="final_exam_score">Final Score</th>
+                        <th class="sortable" data-sort="performance_category">Performance</th>
+                        <th class="text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="student-tbody">
+                    </tbody>
+            </table>
+        </div>
+        
+        <div id="pagination-controls" class="d-flex justify-content-center mt-3">
+            </div>
+        <p id="no-data-message" class="warning-message" style="display: none;">No student data available. Please add a student to begin.</p>
+    </div>
+
+    <div class="modal fade" id="addStudentModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form action="{{ url_for('add_student') }}" method="post">
+                    <div class="modal-header"><h5 class="modal-title">Add New Student</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                    <div class="modal-body">
+                        <div class="mb-3"><label class="form-label">Student ID (Alphanumeric)</label><input type="text" class="form-control" name="student_id" required></div>
+                        <div class="mb-3"><label class="form-label">Student Name</label><input type="text" class="form-control" name="name" required></div>
+                        <hr><p class="text-muted small">Initial Scores (0-100):</p>
+                        <div class="mb-3"><label class="form-label">Test 1</label><input type="number" class="form-control" name="test_score_1" value="0"></div>
+                        <div class="mb-3"><label class="form-label">Test 2</label><input type="number" class="form-control" name="test_score_2" value="0"></div>
+                        <div class="mb-3"><label class="form-label">Assignment</label><input type="number" class="form-control" name="assignment_score" value="0"></div>
+                    </div>
+                    <div class="modal-footer"><button type="submit" class="button primary">Save Student</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="editStudentModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form id="editStudentForm" method="post">
+                    <div class="modal-header"><h5 class="modal-title">Edit Student Details</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                    <div class="modal-body">
+                        <p><strong>Student ID:</strong> <span id="editStudentIdDisplay"></span></p>
+                        <div class="mb-3"><label class="form-label">Name</label><input type="text" class="form-control" id="editName" name="name" required></div>
+                        <div class="mb-3"><label class="form-label">Test 1</label><input type="number" class="form-control" id="editTest1" name="test_score_1" required></div>
+                        <div class="mb-3"><label class="form-label">Test 2</label><input type="number" class="form-control" id="editTest2" name="test_score_2" required></div>
+                        <div class="mb-3"><label class="form-label">Assignment</label><input type="number" class="form-control" id="editAssignment" name="assignment_score" required></div>
+                    </div>
+                    <div class="modal-footer"><button type="submit" class="button primary">Save Changes</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal fade" id="whatIfModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">What-If Scenario Analysis</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6"><label class="form-label">Attendance: <span id="whatIfAttendanceVal">50</span>%</label><input type="range" class="form-range" id="whatIfAttendance" value="50"></div>
+                        <div class="col-md-6"><label class="form-label">Test 1: <span id="whatIfTest1Val">70</span></label><input type="range" class="form-range" id="whatIfTest1" value="70"></div>
+                        <div class="col-md-6"><label class="form-label">Test 2: <span id="whatIfTest2Val">70</span></label><input type="range" class="form-range" id="whatIfTest2" value="70"></div>
+                        <div class="col-md-6"><label class="form-label">Assignment: <span id="whatIfAssignmentVal">70</span></label><input type="range" class="form-range" id="whatIfAssignment" value="70"></div>
+                    </div>
+                    <div class="text-center mt-4"><button id="calculateWhatIf" class="button primary">Calculate Prediction</button></div>
+                    <div id="whatIfResult" class="mt-4 text-center" style="display:none;">
+                        <h4>Predicted Outcome</h4>
+                        <p>Final Score: <strong id="whatIfScore" style="font-size: 1.5em;"></strong> | Category: <strong id="whatIfCategory" style="font-size: 1.5em;"></strong></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // #region ### GLOBAL AND UTILITY VARIABLES ###
+    const trainButton = document.getElementById('train-model-btn');
+    const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
+    const refreshIndicator = document.getElementById('refresh-indicator');
+    const studentTbody = document.getElementById('student-tbody');
+    const searchInput = document.getElementById('search-input');
+    const filterCategory = document.getElementById('filter-category');
+    const paginationControls = document.getElementById('pagination-controls');
+    const noDataMessage = document.getElementById('no-data-message');
+    const selectAllCheckbox = document.getElementById('select-all-checkbox');
+    const exportCsvBtn = document.getElementById('export-csv-btn');
+    
+    let allStudents = {{ students|tojson }};
+    let refreshInterval;
+    let currentPage = 1;
+    const rowsPerPage = 10;
+    let sortColumn = 'name';
+    let sortDirection = 'asc';
+    // #endregion
+
+    // #region ### EVENT LISTENERS ###
+    if (trainButton) {
+        trainButton.addEventListener('click', handleTrainModel);
+    }
+    
+    const editStudentModal = document.getElementById('editStudentModal');
+    if (editStudentModal) {
+        editStudentModal.addEventListener('show.bs.modal', setupEditModal);
+    }
+
+    const whatIfModal = document.getElementById('whatIfModal');
+    if (whatIfModal) {
+        setupWhatIfModal();
+    }
+
+    autoRefreshToggle.addEventListener('change', (e) => toggleAutoRefresh(e.target.checked));
+    searchInput.addEventListener('input', () => { currentPage = 1; renderTable(); });
+    filterCategory.addEventListener('change', () => { currentPage = 1; renderTable(); });
+    document.querySelectorAll('#student-table th.sortable').forEach(th => {
+        th.addEventListener('click', handleSort);
+    });
+    selectAllCheckbox.addEventListener('change', handleSelectAll);
+    exportCsvBtn.addEventListener('click', handleExportCsv);
+    // #endregion
+
+    // #region ### CORE FUNCTIONS (RENDERING, FILTERING, SORTING, PAGINATION) ###
+    function renderTable() {
+        let filteredStudents = getFilteredStudents();
+        sortStudents(filteredStudents);
+        
+        studentTbody.innerHTML = '';
+        noDataMessage.style.display = filteredStudents.length === 0 ? 'block' : 'none';
+
+        const paginatedStudents = paginate(filteredStudents);
+        
+        paginatedStudents.forEach(student => {
+            const tr = document.createElement('tr');
+            tr.dataset.studentId = student.student_id;
+            tr.dataset.performance = student.performance_category;
+            
+            const performanceClass = `performance-${(student.performance_category || 'n/a').toLowerCase().replace(' ', '-')}`;
+
+            // UPDATED: This HTML structure includes all the required columns
+            tr.innerHTML = `
+                <td class="text-center"><input type="checkbox" class="row-checkbox" data-id="${student.student_id}"></td>
+                <td>${student.student_id}</td>
+                <td>${student.name}</td>
+                <td class="attendance-cell">${(student.attendance_percentage || 0).toFixed(2)}%</td>
+                <td class="score-cell">${student.test_score_1}</td>
+                <td class="score-cell">${student.test_score_2}</td>
+                <td class="score-cell">${student.assignment_score}</td>
+                <td class="score-cell">${student.final_exam_score !== 'N/A' ? parseFloat(student.final_exam_score).toFixed(2) : 'N/A'}</td>
+                <td class="performance-cell ${performanceClass}">${student.performance_category}</td>
+                <td class="text-center">
+                    <button class="button primary small edit-btn" data-bs-toggle="modal" data-bs-target="#editStudentModal"
+                        data-id="${student.student_id}" data-name="${student.name}" data-test1="${student.test_score_1}" 
+                        data-test2="${student.test_score_2}" data-assignment="${student.assignment_score}">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <form action="/delete_student/${student.student_id}" method="post" class="d-inline" onsubmit="return confirm('Are you sure?');">
+                        <button type="submit" class="button danger small"><i class="fas fa-trash"></i> Delete</button>
+                    </form>
+                </td>
+            `;
+            studentTbody.appendChild(tr);
+        });
+        
+        renderPagination(filteredStudents.length);
+        updateSelectAllCheckboxState();
+    }
+
+    function getFilteredStudents() {
+        const searchTerm = searchInput.value.toLowerCase();
+        const category = filterCategory.value;
+
+        return allStudents.filter(student => {
+            const matchesSearch = searchTerm === '' ||
+                student.name.toLowerCase().includes(searchTerm) ||
+                String(student.student_id).toLowerCase().includes(searchTerm);
+            
+            const matchesCategory = category === '' || student.performance_category === category;
+            
+            return matchesSearch && matchesCategory;
+        });
+    }
+
+    function sortStudents(students) {
+        students.sort((a, b) => {
+            let valA = a[sortColumn];
+            let valB = b[sortColumn];
+            
+            if (['attendance_percentage', 'test_score_1', 'test_score_2', 'assignment_score', 'final_exam_score'].includes(sortColumn)) {
+                valA = parseFloat(valA) || 0;
+                valB = parseFloat(valB) || 0;
+            }
+
+            if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+            if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }
+
+    function paginate(students) {
+        const start = (currentPage - 1) * rowsPerPage;
+        const end = start + rowsPerPage;
+        return students.slice(start, end);
+    }
+    
+    function renderPagination(totalItems) {
+        const totalPages = Math.ceil(totalItems / rowsPerPage);
+        paginationControls.innerHTML = '';
+        if (totalPages <= 1) return;
+
+        const prevLi = document.createElement('li');
+        prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+        prevLi.innerHTML = `<a class="page-link" data-page="${currentPage - 1}">&laquo;</a>`;
+        paginationControls.appendChild(prevLi);
+
+        for (let i = 1; i <= totalPages; i++) {
+            const li = document.createElement('li');
+            li.className = `page-item ${i === currentPage ? 'active' : ''}`;
+            li.innerHTML = `<a class="page-link" data-page="${i}">${i}</a>`;
+            paginationControls.appendChild(li);
+        }
+
+        const nextLi = document.createElement('li');
+        nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+        nextLi.innerHTML = `<a class="page-link" data-page="${currentPage + 1}">&raquo;</a>`;
+        paginationControls.appendChild(nextLi);
+        
+        paginationControls.addEventListener('click', handlePaginationClick);
+    }
+    // #endregion
+
+    // #region ### EVENT HANDLER FUNCTIONS ###
+    function handleTrainModel() {
+        trainButton.innerHTML = '<i class="fas fa-sync-alt fa-spin"></i> Training...';
+        trainButton.disabled = true;
+        fetch("{{ url_for('train_model_route') }}", { method: 'POST' })
+            .then(res => res.json())
+            .then(data => window.showNotification(data.message, data.status))
+            .catch(() => window.showNotification('An error occurred during training.', 'error'))
+            .finally(() => {
+                trainButton.innerHTML = '<i class="fas fa-brain"></i> Train Face Model';
+                trainButton.disabled = false;
+            });
+    }
+
+    function setupEditModal(event) {
+        const button = event.relatedTarget;
+        const studentId = button.dataset.id;
+        const modalForm = editStudentModal.querySelector('#editStudentForm');
+        modalForm.action = `/edit_student/${studentId}`;
+        editStudentModal.querySelector('#editStudentIdDisplay').textContent = studentId;
+        editStudentModal.querySelector('#editName').value = button.dataset.name;
+        editStudentModal.querySelector('#editTest1').value = button.dataset.test1;
+        editStudentModal.querySelector('#editTest2').value = button.dataset.test2;
+        editStudentModal.querySelector('#editAssignment').value = button.dataset.assignment;
+    }
+
+    function setupWhatIfModal() {
+        // UPDATED: All four sliders are now handled
+        const sliders = { attendance: whatIfModal.querySelector('#whatIfAttendance'), test1: whatIfModal.querySelector('#whatIfTest1'), test2: whatIfModal.querySelector('#whatIfTest2'), assignment: whatIfModal.querySelector('#whatIfAssignment') };
+        const values = { attendance: whatIfModal.querySelector('#whatIfAttendanceVal'), test1: whatIfModal.querySelector('#whatIfTest1Val'), test2: whatIfModal.querySelector('#whatIfTest2Val'), assignment: whatIfModal.querySelector('#whatIfAssignmentVal') };
+        
+        for (const key in sliders) {
+            sliders[key].addEventListener('input', (e) => { values[key].textContent = e.target.value; });
+        }
+
+        document.getElementById('calculateWhatIf').addEventListener('click', () => {
+            const data = { attendance: sliders.attendance.value, test1: sliders.test1.value, test2: sliders.test2.value, assignment: sliders.assignment.value };
+            fetch("{{ url_for('what_if_analysis') }}", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+                .then(res => res.json())
+                .then(result => {
+                    if (result.error) { window.showNotification(result.error, 'error'); } 
+                    else {
+                        document.getElementById('whatIfScore').textContent = result.predicted_score;
+                        document.getElementById('whatIfCategory').textContent = result.category;
+                        document.getElementById('whatIfResult').style.display = 'block';
+                    }
+                });
+        });
+    }
+
+    function handleSort(event) {
+        const newSortColumn = event.target.dataset.sort;
+        if (sortColumn === newSortColumn) {
+            sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            sortColumn = newSortColumn;
+            sortDirection = 'asc';
+        }
+        document.querySelectorAll('#student-table th.sortable').forEach(th => {
+            th.classList.remove('sort-asc', 'sort-desc');
+        });
+        event.target.classList.add(sortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+        renderTable();
+    }
+    
+    function handlePaginationClick(event) {
+        if (event.target.tagName === 'A' && !event.target.parentElement.classList.contains('disabled')) {
+            currentPage = Number(event.target.dataset.page);
+            renderTable();
+        }
+    }
+    
+    function handleSelectAll() {
+        studentTbody.querySelectorAll('.row-checkbox').forEach(checkbox => {
+            checkbox.checked = selectAllCheckbox.checked;
+        });
+    }
+
+    function updateSelectAllCheckboxState() {
+        const allCheckboxes = studentTbody.querySelectorAll('.row-checkbox');
+        if (allCheckboxes.length === 0) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+            return;
+        }
+        const checkedCount = Array.from(allCheckboxes).filter(cb => cb.checked).length;
+        if (checkedCount === 0) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+        } else if (checkedCount === allCheckboxes.length) {
+            selectAllCheckbox.checked = true;
+            selectAllCheckbox.indeterminate = false;
+        } else {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = true;
+        }
+    }
+
+    function handleExportCsv() {
+        const selectedIds = Array.from(studentTbody.querySelectorAll('.row-checkbox:checked')).map(cb => cb.dataset.id);
+        if (selectedIds.length === 0) {
+            window.showNotification('Please select students to export.', 'warning');
+            return;
+        }
+        
+        const dataToExport = allStudents.filter(s => selectedIds.includes(s.student_id));
+        const headers = Object.keys(dataToExport[0]).join(',');
+        const rows = dataToExport.map(row => Object.values(row).join(','));
+        const csvContent = "data:text/csv;charset=utf-8," + headers + "\n" + rows.join("\n");
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "student_export.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+    // #endregion
+
+    // #region ### AUTO-REFRESH LOGIC ###
+    function updateCompleteStats() {
+        if (!autoRefreshToggle.checked && document.hidden) return;
+        
+        refreshIndicator.classList.add('active');
+
+        fetch('/get_complete_stats')
+            .then(res => res.json())
+            .then(data => {
+                const animate = (elId, val) => { const el = document.getElementById(elId); if (el && el.textContent != val) { el.classList.add('stat-updated'); el.textContent = val; setTimeout(() => el.classList.remove('stat-updated'), 1000); }};
+                animate('total-students-stat', data.total_students);
+                animate('present-today-stat', data.present_today);
+                animate('avg-attendance-stat', data.avg_attendance + '%');
+                animate('at-risk-stat', data.at_risk_count);
+                animate('average-stat', data.average_count || 0);
+                animate('excellent-stat', data.excellent_count);
+                
+                if (JSON.stringify(allStudents) !== JSON.stringify(Object.values(data.student_data))) {
+                    allStudents = Object.values(data.student_data);
+                    renderTable();
+                }
+            })
+            .finally(() => {
+                setTimeout(() => refreshIndicator.classList.remove('active'), 500);
+            });
+    }
+
+    function toggleAutoRefresh(enabled) {
+        if (enabled) {
+            if (refreshInterval) clearInterval(refreshInterval);
+            refreshInterval = setInterval(updateCompleteStats, 8000);
+            updateCompleteStats();
+        } else {
+            clearInterval(refreshInterval);
+            refreshIndicator.classList.remove('active');
+        }
+    }
+    // #endregion
+
+    // Initial Load
+    renderTable();
+    toggleAutoRefresh(autoRefreshToggle.checked);
+});
+</script>
+{% endblock %}
