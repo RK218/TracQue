@@ -100,9 +100,11 @@
                     if (data.message && data.message.includes('already marked')) {
                         updateStatus(`Attendance already marked for ${data.student.name}.`, 'info');
                     } else if (data.success) {
-                        updateStatus(`Success: Welcome, ${data.student.name}!`, 'success');
-                        scannedToday.add(data.student.id);
-                        addRecordToList(data.student.name, data.student.id, data.timestamp);
+                        updateStatus(`Barcode scanned for ${data.student.name}. Redirecting to fingerprint...`, 'success');
+                        // Redirect to fingerprint verification page
+                        setTimeout(() => {
+                            window.location.href = '/fingerprint_attendance';
+                        }, 1200);
                     } else {
                         updateStatus(`Error: ${data.message || 'Unknown error'}`, 'error');
                     }
