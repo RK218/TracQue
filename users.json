@@ -10,11 +10,6 @@
     "role": "student"
   },
   {
-    "username": "UG1660",
-    "password": "jeethesh30",
-    "role": "student"
-  },
-  {
     "username": "UG1643",
     "password": "Jeevans@123",
     "role": "student"
@@ -25,8 +20,33 @@
     "role": "student"
   },
   {
+    "username": "UG1662",
+    "password": "Rk218",
+    "role": "student"
+  },
+  {
     "username": "UG1655",
     "password": "muzzu3366",
+    "role": "student"
+  },
+  {
+    "username": "UG1667",
+    "password": "anything",
+    "role": "student"
+  },
+  {
+    "username": "UG1663",
+    "password": "pass1234",
+    "role": "student"
+  },
+  {
+    "username": "UG1693",
+    "password": "ashwin",
+    "role": "student"
+  },
+  {
+    "username": "UG1660",
+    "password": "jeethesh30",
     "role": "student"
   }
 ]

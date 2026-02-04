@@ -40,9 +40,9 @@
             </div>
             
             <div class="recognized-container">
-                <h2>Present Today (<span id="present-count">0</span>/<span id="total-students">0</span>)</h2>
+                <h2>Your Attendance Status</h2>
                 <ul id="recognized-list">
-                    <p class="hint" id="no-attendance-msg">No students marked present yet.</p>
+                    <p class="hint" id="no-attendance-msg">You have not been marked present yet.</p>
                 </ul>
             </div>
         </div>
@@ -98,20 +98,15 @@ document.addEventListener('DOMContentLoaded', () => {
         fetch(STATS_URL)
             .then(response => response.json())
             .then(data => {
-                totalStudentsEl.textContent = data.total_students;
-                presentCountEl.textContent = data.present_count;
-
-                recognizedList.innerHTML = ''; // Clear the list to rebuild it
-                if (data.present_list.length > 0) {
+                // Only show the logged-in student's attendance status
+                recognizedList.innerHTML = '';
+                const username = '{{ session["username"] }}';
+                const student = data.present_list.find(s => s.id === username);
+                if (student) {
                     noAttendanceMsg.style.display = 'none';
-                    // Sort by newest first
-                    data.present_list.sort((a, b) => b.timestamp.localeCompare(a.timestamp)); 
-                    data.present_list.forEach(student => {
-                        recognizedToday.add(student.id);
-                        const li = document.createElement('li');
-                        li.innerHTML = `<span><strong>${student.name}</strong> (ID: ${student.id})</span><span class="time-stamp">${student.timestamp}</span>`;
-                        recognizedList.appendChild(li);
-                    });
+                    const li = document.createElement('li');
+                    li.innerHTML = `<span><strong>${student.name}</strong> (ID: ${student.id})</span><span class="time-stamp">${student.timestamp}</span>`;
+                    recognizedList.appendChild(li);
                 } else {
                     recognizedList.appendChild(noAttendanceMsg);
                     noAttendanceMsg.style.display = 'block';

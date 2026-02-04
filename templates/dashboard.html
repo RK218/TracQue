@@ -165,7 +165,9 @@
             {% endif %}
         </div>
 
-            {# ABSENT STUDENTS SECTION #}
+
+            {# ABSENT STUDENTS SECTION: Only for teachers #}
+            {% if session['role'] != 'student' %}
             <div class="card p-4 mb-5 bg-white">
                 <h2 style="color: #d9534f;"><i class="fas fa-user-slash"></i> Absent Students Today</h2>
                 {% if absent_students and absent_students|length > 0 %}
@@ -180,8 +182,10 @@
                     <p class="text-success">All students have attended today!</p>
                 {% endif %}
             </div>
+            {% endif %}
 
-        {# QUICK ACCESS CARDS FOR ATTENDANCE METHODS #}
+        {# QUICK ACCESS CARDS FOR ATTENDANCE METHODS: Only for teachers #}
+        {% if session['role'] != 'student' %}
         <div class="row mb-5">
             <h2 style="color: #666; font-size: 1.5em; margin-bottom: 20px;"><i class="fas fa-hand-pointer"></i> Quick Access - Attendance Methods</h2>
             
@@ -215,6 +219,7 @@
                 </a>
             </div>
         </div>
+        {% endif %}
 
         {# --- SYSTEM SETUP / ACTIONS CARD --- #}
         <div class="card p-4 mb-5 bg-white" id="section-setup">

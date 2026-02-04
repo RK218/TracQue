@@ -1,3 +1,4 @@
+
 {% extends "_base.html" %}
 {% block title %}Enroll New Student{% endblock %}
 
@@ -6,43 +7,6 @@
     #capture-status { margin-top: 15px; }
     #progress-bar { width: 100%; background-color: #e0e0e0; border-radius: 5px; overflow: hidden; margin-top: 10px; }
     #progress { width: 0%; height: 20px; background-color: #4CAF50; text-align: center; line-height: 20px; color: white; transition: width 0.1s ease-in-out; }
-    
-    .fingerprint-section {
-        margin-top: 20px;
-        padding: 20px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 10px;
-        color: white;
-    }
-    
-    .fingerprint-status {
-        background: rgba(255,255,255,0.2);
-        padding: 15px;
-        border-radius: 8px;
-        margin-top: 15px;
-    }
-    
-    .fingerprint-prompt {
-        font-size: 1.2em;
-        font-weight: bold;
-        text-align: center;
-        margin: 15px 0;
-        padding: 10px;
-        background: rgba(255,255,255,0.3);
-        border-radius: 5px;
-    }
-    
-    #fingerprint-icon {
-        font-size: 4em;
-        text-align: center;
-        margin: 20px 0;
-        animation: pulse 2s infinite;
-    }
-    
-    @keyframes pulse {
-        0%, 100% { transform: scale(1); opacity: 1; }
-        50% { transform: scale(1.1); opacity: 0.8; }
-    }
 </style>
 {% endblock %}
 
@@ -56,33 +20,37 @@
             <input type="text" id="parent_phone" placeholder="Enter Parent Phone Number" required class="form-control mb-2">
         </form>
     </div>
-    
     <div class="card">
         <h2>Step 2: Capture 30 Face Images</h2>
-        <video id="video" width="640" height="480" autoplay muted playsinline style="border-radius: 10px; max-width: 100%; height: auto;"></video>
+        <div style="position:relative;">
+            <video id="video" width="640" height="480" autoplay muted playsinline style="border-radius: 10px; max-width: 100%; height: auto; background:#222;"></video>
+            <div id="webcam-error-message" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); color:#fff; z-index:2; align-items:center; justify-content:center; text-align:center; font-size:1.2em; padding:40px; border-radius:10px;">
+                <b>Webcam not available.</b><br>
+                Please check:<br>
+                - Camera permissions in your browser<br>
+                - No other app is using the camera<br>
+                - Try refreshing the page or using a different browser<br>
+                <span id="webcam-error-details" style="font-size:0.9em; color:#ffb3b3;"></span>
+            </div>
+        </div>
         <button id="capture" class="button">Start Face Capture</button>
         <div id="capture-status">
             <p>Images Captured: <span id="count">0</span>/30</p>
             <div id="progress-bar"><div id="progress">0%</div></div>
         </div>
     </div>
-    
     <div class="card fingerprint-section" id="fingerprint-section" style="display:none;">
         <h2><i class="fas fa-fingerprint"></i> Step 3: Enroll Fingerprint (Optional)</h2>
         <p>Enroll fingerprint for quick attendance marking</p>
-        
         <div id="fingerprint-icon">
             <i class="fas fa-fingerprint"></i>
         </div>
-        
         <div class="fingerprint-prompt" id="fingerprint-prompt">
             Ready to enroll fingerprint
         </div>
-        
         <div class="fingerprint-status" id="fingerprint-status">
             <strong>Status:</strong> <span id="fp-status-text">Not started</span>
         </div>
-        
         <div style="text-align: center; margin-top: 20px;">
             <button id="enroll-fingerprint-btn" class="button success" style="margin-right: 10px;">
                 <i class="fas fa-fingerprint"></i> Enroll Fingerprint
@@ -90,6 +58,9 @@
             <button id="skip-fingerprint-btn" class="button secondary">
                 <i class="fas fa-forward"></i> Skip Fingerprint
             </button>
+            <a href="{{ url_for('fingerprint_attendance_page') }}" class="button" style="margin-left: 10px; background: #6a82fb; color: white;">
+                <i class="fas fa-arrow-right"></i> Go to Fingerprint Attendance
+            </a>
         </div>
     </div>
 {% endblock %}
@@ -106,14 +77,36 @@ document.addEventListener('DOMContentLoaded', () => {
     const skipFingerprintBtn = document.getElementById('skip-fingerprint-btn');
     const fingerprintPrompt = document.getElementById('fingerprint-prompt');
     const fpStatusText = document.getElementById('fp-status-text');
-    
+
     let capturedImages = [];
     let currentStudentId = '';
     let currentStudentName = '';
 
-    navigator.mediaDevices.getUserMedia({ video: true })
-        .then(stream => { video.srcObject = stream; })
-        .catch(err => { window.showNotification('Could not access webcam. Please check permissions.', 'error'); });
+    function startWebcam() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            window.showNotification('Webcam not supported in this browser.', 'error');
+            console.error('Webcam not supported: navigator.mediaDevices.getUserMedia is undefined');
+            return;
+        }
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+                video.addEventListener('loadedmetadata', () => {
+                    captureButton.disabled = false;
+                });
+                console.log('Webcam stream started successfully.');
+            })
+            .catch(err => {
+                window.showNotification('Could not access webcam. Please check permissions and ensure no other app is using the camera.', 'error');
+                console.error('Webcam error:', err);
+                captureButton.disabled = true;
+            });
+    }
+    captureButton.disabled = true;
+    startWebcam();
+
+    let captureInterval = null;
+    let isCapturing = false;
 
     captureButton.addEventListener('click', () => {
         const studentId = document.getElementById('student_id').value.trim();
@@ -122,10 +115,26 @@ document.addEventListener('DOMContentLoaded', () => {
             window.showNotification('Please enter both Student ID and Name.', 'error');
             return;
         }
-        
+        if (!video.srcObject) {
+            window.showNotification('Webcam stream not ready. Attempting to start camera again...', 'error');
+            // Try to re-initialize the webcam
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    video.srcObject = stream;
+                    video.addEventListener('loadedmetadata', () => {
+                        captureButton.disabled = false;
+                    });
+                    window.showNotification('Webcam started. Please try capturing again.', 'success');
+                })
+                .catch(err => {
+                    window.showNotification('Could not access webcam. Please check permissions and ensure no other app is using the camera.', 'error');
+                    console.error('Webcam error:', err);
+                    captureButton.disabled = true;
+                });
+            return;
+        }
         currentStudentId = studentId;
         currentStudentName = name;
-        
         captureButton.textContent = 'Capturing...';
         captureButton.disabled = true;
         const canvas = document.createElement('canvas');
@@ -134,26 +143,34 @@ document.addEventListener('DOMContentLoaded', () => {
         const context = canvas.getContext('2d');
         let count = 0;
         capturedImages = [];
-        
-        const interval = setInterval(() => {
-            if (count < 30) {
-                context.drawImage(video, 0, 0, 640, 480);
-                capturedImages.push(canvas.toDataURL('image/jpeg', 0.8));
+        isCapturing = true;
+        captureInterval = setInterval(() => {
+            if (count < 30 && isCapturing) {
+                try {
+                    context.drawImage(video, 0, 0, 640, 480);
+                    capturedImages.push(canvas.toDataURL('image/jpeg', 0.8));
+                } catch (e) {
+                    window.showNotification('Error capturing image from webcam.', 'error');
+                    clearInterval(captureInterval);
+                    isCapturing = false;
+                    return;
+                }
                 count++;
                 countSpan.textContent = count;
                 const percentage = Math.round((count / 30) * 100);
                 progressDiv.style.width = `${percentage}%`;
                 progressDiv.textContent = `${percentage}%`;
             } else {
-                clearInterval(interval);
+                clearInterval(captureInterval);
+                isCapturing = false;
                 sendImagesToServer(studentId, name, capturedImages);
             }
         }, 150);
     });
 
     function sendImagesToServer(studentId, name, images) {
-    const parentPhone = document.getElementById('parent_phone').value.trim();
-    const payload = { student_id: studentId, name: name, parent_phone: parentPhone, images: images };
+        const parentPhone = document.getElementById('parent_phone').value.trim();
+        const payload = { student_id: studentId, name: name, parent_phone: parentPhone, images: images };
         
         captureButton.textContent = 'Uploading...';
 
@@ -164,12 +181,17 @@ document.addEventListener('DOMContentLoaded', () => {
         })
         .then(response => response.json())
         .then(data => {
+            console.log('Face capture response:', data); // DEBUG LOG
             window.showNotification(data.message, data.status);
             if(data.status === 'success') {
                 captureButton.textContent = 'Face Capture Complete ✓';
-                // Show fingerprint enrollment section
-                fingerprintSection.style.display = 'block';
-                fingerprintSection.scrollIntoView({ behavior: 'smooth' });
+                // Show fingerprint enrollment section if backend says so
+                if (data.show_fingerprint) {
+                    fingerprintSection.style.display = 'block';
+                    fingerprintSection.scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    console.warn('show_fingerprint flag missing or false in response:', data);
+                }
             } else {
                 captureButton.textContent = 'Start Face Capture';
                 captureButton.disabled = false;
@@ -308,7 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Skip fingerprint enrollment
     skipFingerprintBtn.addEventListener('click', () => {
         window.location.href = "{{ url_for('index') }}";
-    });
+    })
 });
 </script>
 {% endblock %}

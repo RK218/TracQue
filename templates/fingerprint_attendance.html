@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fingerprint Attendance</title>
+    {% if students is defined %}
+    <script>
+        var students = {{ students|tojson|safe }};
+    </script>
+    {% endif %}
     <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; color: #333; }
         .container { max-width: 900px; margin: auto; background: white; border-radius: 15px; padding: 30px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); }
@@ -114,10 +119,16 @@
                 const records = await response.json();
                 const attendanceItemsEl = document.getElementById('attendance-items');
                 attendanceItemsEl.innerHTML = '';
-                
+                // Only show attendance for the logged-in student if students variable is present
+                let allowedIds = [];
+                if (typeof students !== 'undefined' && Array.isArray(students) && students.length > 0) {
+                    allowedIds = students.map(s => s.student_id);
+                }
                 records.forEach(record => {
-                    scannedToday.add(record.id);
-                    addRecordToList(record.name, record.id, record.timestamp);
+                    if (allowedIds.length === 0 || allowedIds.includes(record.id)) {
+                        scannedToday.add(record.id);
+                        addRecordToList(record.name, record.id, record.timestamp);
+                    }
                 });
             } catch (error) {
                 console.error("Could not load initial attendance:", error);

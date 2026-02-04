@@ -505,7 +505,7 @@ def index():
     notifications = []
     at_risk_students = df[df['performance_category'] == 'At Risk'] if 'performance_category' in df.columns else pd.DataFrame()
     for student in at_risk_students.to_dict(orient='records'):
-        message = f"Alert: Your child {student['name']} (ID: {student['student_id']}) is classified as AT RISK. Please contact the College."
+        message = f"Alert: {student['name']} (ID: {student['student_id']}) is classified as AT RISK. Please contact the College."
         notifications.append({'student_id': student['student_id'], 'message': message})
 
     if role == 'teacher':
@@ -536,37 +536,35 @@ def index():
         # --- Calculate attendance streak for the student ---
         streak = 0
         if username and not df.empty:
-            # Get all attendance files sorted by date descending (most recent first)
+            import glob
             attendance_files = sorted(glob.glob(os.path.join(ATTENDANCE_FOLDER, 'attendance_*.csv')), reverse=True)
             today = datetime.date.today()
             expected_date = today
             for file_path in attendance_files:
-                # Extract date from filename: attendance_YYYY-MM-DD.csv
                 try:
                     filename = os.path.basename(file_path)
                     date_str = filename.replace('attendance_', '').replace('.csv', '')
                     file_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
-                    # Check if this file is on the expected date (consecutive)
+                    # Only count streak if file is for expected consecutive date
                     if file_date != expected_date:
-                        # Gap found, streak ends
                         break
-                    # Check if student attended on this date
                     daily_df = pd.read_csv(file_path, dtype={'Student ID': str})
-                    if username in daily_df['Student ID'].astype(str).str.strip().values:
+                    attended_today = username in daily_df['Student ID'].astype(str).str.strip().values
+                    if attended_today:
                         streak += 1
-                        expected_date = expected_date - datetime.timedelta(days=1)
+                        expected_date -= datetime.timedelta(days=1)
                     else:
-                        # Student missed this day, streak ends
                         break
                 except Exception:
                     break
 
+        # Only pass the logged-in student's data to the template
         return render_template('dashboard.html', 
             students=student_row,
             search_query=search_query,
             total_days=total_days,
-            students_not_attended=students_not_attended,
-            absent_students=absent_students,
+            students_not_attended=0,  # Hide not attended count for students
+            absent_students=[],       # Hide absent list for students
             can_edit=False,
             notifications=[note for note in notifications if note['student_id'] == username],
             streak=streak)
@@ -645,9 +643,9 @@ def edit_student(student_id):
     df.loc[idx, 'test_score_2'] = int(request.form.get('test_score_2', df.loc[idx, 'test_score_2']))
     df.loc[idx, 'assignment_score'] = int(request.form.get('assignment_score', df.loc[idx, 'assignment_score']))
     # Attendance fields
-    days_present = normalize_days_present(request.form.get('days_present', df.loc[idx, 'days_present'] if 'days_present' in df.columns else 0))
+    days_present = int(request.form.get('days_present', df.loc[idx, 'days_present'] if 'days_present' in df.columns else 0))
     total_days = int(request.form.get('total_days', df.loc[idx, 'total_days'] if 'total_days' in df.columns else 0))
-    attendance_percentage = round((int(days_present) / total_days) * 100, 2) if total_days > 0 else 0.0
+    attendance_percentage = round((days_present / total_days) * 100, 2) if total_days > 0 else 0.0
     df.loc[idx, 'days_present'] = days_present
     df.loc[idx, 'total_days'] = total_days
     df.loc[idx, 'attendance_percentage'] = attendance_percentage
@@ -709,27 +707,22 @@ def delete_student(student_id):
         except OSError as e:
             app.logger.error(f"Error removing face image {f}: {e}")
 
-    # --- Step 3 (NEW): Remove student from TODAY'S attendance log ---
-    today_str = datetime.date.today().strftime("%Y-%m-%d")
-    attendance_file_path = os.path.join(ATTENDANCE_FOLDER, f"attendance_{today_str}.csv")
 
-    if os.path.exists(attendance_file_path):
-        try:
-            # Read today's attendance file
-            att_df = pd.read_csv(attendance_file_path, dtype={'Student ID': str})
-            
-            # Check if the student is in today's log
-            if not att_df.empty and student_id in att_df['Student ID'].values:
-                # Filter out the deleted student and keep everyone else
-                att_df_updated = att_df[att_df['Student ID'] != student_id]
-                
-                # Save the updated attendance file, overwriting the old one
-                # If this makes the file empty, it will save an empty file with headers
-                att_df_updated.to_csv(attendance_file_path, index=False)
-                app.logger.info(f"Removed student {student_id} from today's attendance log.")
-
-        except (pd.errors.EmptyDataError, FileNotFoundError) as e:
-            app.logger.warning(f"Could not modify today's attendance file during deletion: {e}")
+    # --- Step 3 (UPDATED): Remove student from ALL attendance logs ---
+    try:
+        for filename in os.listdir(ATTENDANCE_FOLDER):
+            if filename.endswith('.csv'):
+                attendance_file_path = os.path.join(ATTENDANCE_FOLDER, filename)
+                try:
+                    att_df = pd.read_csv(attendance_file_path, dtype={'Student ID': str})
+                    if not att_df.empty and student_id in att_df['Student ID'].values:
+                        att_df_updated = att_df[att_df['Student ID'] != student_id]
+                        att_df_updated.to_csv(attendance_file_path, index=False)
+                        app.logger.info(f"Removed student {student_id} from attendance log: {filename}")
+                except (pd.errors.EmptyDataError, FileNotFoundError) as e:
+                    app.logger.warning(f"Could not modify attendance file {filename} during deletion: {e}")
+    except Exception as e:
+        app.logger.error(f"Error removing student {student_id} from attendance logs: {e}")
 
     # --- Step 4 (NEW): Remove student's fingerprint data ---
     slot = get_fingerprint_slot_for_student(student_id)
@@ -825,7 +818,7 @@ def capture_faces():
                 cv2.imwrite(os.path.join(FACES_FOLDER, f"{student_id}.{i}.jpg"), face_roi)
         except Exception as e: app.logger.error(f"Error processing image {i} for student {student_id}: {e}")
     
-    return jsonify({'status': 'success', 'message': f'Successfully enrolled {name}. Remember to train the model!'})
+    return jsonify({'status': 'success', 'message': f'Successfully enrolled {name}. Remember to train the model!', 'show_fingerprint': True})
 
 @app.route('/train_model', methods=['POST'])
 def train_model_route():
@@ -871,6 +864,8 @@ def recognize():
 
     df = get_df()
     student_info = {row['student_id']: row['name'] for _, row in df.iterrows()}
+    # Only allow marking for the logged-in student
+    session_student_id = session.get('username')
 
     try:
         image_data = request.json['image'].split(',')[1]
@@ -888,19 +883,30 @@ def recognize():
             attendance = {'percentage': 0.0, 'status': ''}
             status = ''
             # Using a confidence threshold of 80
-            if conf < 80:
-                student_id = rev_id_map.get(label_pred)
+            student_id = rev_id_map.get(label_pred)
+            if conf < 80 and student_id == session_student_id:
                 if student_id and student_id in student_info:
                     name = student_info[student_id]
                     attendance = mark_attendance(student_id, name)
                     status = attendance.get('status', '')
-            recognized_faces.append({
-                'name': name,
-                'box': [int(x), int(y), int(w), int(h)],
-                'attendance': float(attendance.get('percentage', 0.0)),
-                'confidence': float(conf),
-                'status': status
-            })
+                recognized_faces.append({
+                    'name': name,
+                    'student_id': student_id,
+                    'box': [int(x), int(y), int(w), int(h)],
+                    'attendance': float(attendance.get('percentage', 0.0)),
+                    'confidence': float(conf),
+                    'status': status
+                })
+            else:
+                # If not the logged-in student, ignore or show as unknown
+                recognized_faces.append({
+                    'name': "Unknown",
+                    'student_id': None,
+                    'box': [int(x), int(y), int(w), int(h)],
+                    'attendance': 0.0,
+                    'confidence': float(conf),
+                    'status': ''
+                })
         return jsonify({'recognized_faces': recognized_faces})
     except Exception as e:
         app.logger.error(f"Error in recognition: {str(e)}")
@@ -915,7 +921,7 @@ def barcode_attendance_page():
     if role == 'student':
         df = df[df['student_id'] == username]
         return render_template('barcode_attendance.html', students=df.to_dict(orient='records'))
-    return render_template('barcode_attendance.html')
+    return render_template('barcode_attendance.html', students=None)
 
 @app.route('/mark_barcode_attendance', methods=['POST'])
 def mark_barcode_attendance():
@@ -989,7 +995,7 @@ def fingerprint_attendance_page():
     if role == 'student':
         df = df[df['student_id'] == username]
         return render_template('fingerprint_attendance.html', students=df.to_dict(orient='records'), fingerprint_connected=fingerprint_connected)
-    return render_template('fingerprint_attendance.html', fingerprint_connected=fingerprint_connected)
+    return render_template('fingerprint_attendance.html', students=None, fingerprint_connected=fingerprint_connected)
 
 @app.route('/fingerprint_status')
 def fingerprint_status():
